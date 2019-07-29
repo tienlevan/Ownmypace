@@ -1,0 +1,1805 @@
+*&---------------------------------------------------------------------*
+*& Report ZUPDWD
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT  ZUPDWD.
+***********************************************************************
+
+* Description : download/upload a report from a flat file along with its Source code,
+* Attributes, Text elements, PF-status and Documentation in different languages     *
+*_____________________________________________________________________*
+* Inputs:                                                             *
+*   Tables:                                                           *
+*     SSCRFIELDS - Fields on selection screens                        *
+*   Select options:                                                   *
+*     N/A                                                             *
+*   Parameters:                                                       *
+*     P_DWN   -  Radio Button for Download                            *
+*     P_UPL   -  Radio Button for Upload                              *
+*     P_PROG  -  Program Name                                         *
+*     P_FILE  -  File Name                                            *
+* Outputs:                                                            *
+*  When Uploaded:                                                     *
+*    A report is generated along with its Source code, Attributes,    *
+*  Text elements, PF-status and Documentation and the report would be *
+*  in Active state.                                                   *
+*                                                                     *
+*  When Downloaded:                                                   *
+*    A file is generated on the local system in which Source code,    *
+*  Attributes, Text elements, PF-status and Documentation of the      *
+*  report are downloaded.                                             *
+
+***********************************************************************
+
+* Table declarations...................................................
+TABLES: SSCRFIELDS.                    " Fields on selection screens
+
+* Selection screen elements............................................
+SELECTION-SCREEN BEGIN OF BLOCK B1
+                           WITH FRAME
+                          TITLE TIT1.
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 1(20) COMM1 FOR FIELD P_DWN.
+PARAMETERS: P_DWN RADIOBUTTON GROUP RAD1 DEFAULT 'X' USER-COMMAND UCOM.
+SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 1(20) COMM2 FOR FIELD P_UPL.
+PARAMETERS: P_UPL RADIOBUTTON GROUP RAD1 .
+SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN SKIP.
+
+SELECTION-SCREEN BEGIN OF BLOCK B2
+                           WITH FRAME
+                          TITLE TIT2 .
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 1(20) COMM3 FOR FIELD P_PROG.
+PARAMETERS: P_PROG TYPE TRDIR-NAME MODIF ID BL1.
+*                                      " Program Name
+SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN SKIP.
+
+SELECTION-SCREEN COMMENT /1(50) COMM5.
+SELECTION-SCREEN COMMENT /1(50) COMM6.
+
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 1(20) COMM4 FOR FIELD P_FILE.
+PARAMETERS: P_FILE   TYPE RLGRAP-FILENAME DEFAULT 'C:\'
+                                         MODIF ID BL1.
+*                                      " Download File Name
+SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN END OF BLOCK B2.
+SELECTION-SCREEN END OF BLOCK B1.
+
+* Type declarations for internal tables................................
+TYPES: BEGIN OF TYPE_S_DD03L,
+         FIELDNAME TYPE FIELDNAME,     " Field Name
+       END OF TYPE_S_DD03L,
+
+       BEGIN OF TYPE_S_TRDIR,
+        NAME    TYPE PROGNAME,         " Program Name
+        EDTX    TYPE EDTX,             " Editor lock flag
+        SUBC    TYPE SUBC,             " Program type
+        SECU    TYPE SECU,             " Authorization Group
+        FIXPT   TYPE FIXPT,            " Fixed point arithmetic
+        SSET    TYPE SSET,             " Start only via variant
+        UCCHECK TYPE UCCHECK,          " Unicode check flag
+        RSTAT   TYPE RDIR_RSTAT,       " Status
+        APPL    TYPE RDIR_APPL,        " Application
+        LDBNAME TYPE LDBNAM,           " LDB name
+        TYPE    TYPE RDIR_TYPE,        " Selection screen version
+      END   OF TYPE_S_TRDIR.
+
+
+* Work variables........................................................
+DATA:
+  W_FILE        TYPE STRING,           " File Name
+  W_TYPE(10)    TYPE C,                " File Type
+  W_EXIST(1)    TYPE C,                " Flag
+  W_PROG(60)    TYPE C,                " Program Name
+  W_INDEX       TYPE SYTABIX,          " Index
+  W_TEXT        TYPE REPTI,            " Title of the program
+  W_APPL        TYPE  RDIR_APPL,       " Application
+  W_PROG2(120)  TYPE C,                " Program name
+  W_PROG3(70)   TYPE C,                " Program name
+  W_NAME        TYPE PROGNAME,         " Program name
+  W_OBJ         TYPE TROBJ_NAME,       " Object Name in Object List
+  W_STR         TYPE STRING,           " String
+  W_ANS(1)      TYPE C,                " Answer
+  W_PGMID       TYPE PGMID,            " Program ID
+  W_OBJECT      TYPE TROBJTYPE,        " Object Type
+  W_CHAR(1)     TYPE C,                " Language Key
+  W_LEN(10)     TYPE C,                " Reserved length for text
+  W_STATE       TYPE DOKSTATE,         " Documentation status
+  W_TYP         TYPE DOKU_TYP,         " Documentation type
+  W_VERSION     TYPE DOKVERS,          " Documentation version
+  W_LANG(1)     TYPE C,                " Language Key
+  W_MESS        TYPE STRING,           " Message
+  W_LIN         TYPE I,                " Line Number
+  W_WRD         TYPE STRING,           " Word
+  W_STRLEN      TYPE I,                " String Length
+  W_CNT2        TYPE I,                " Counter Variable
+  W_CNT3        TYPE I,                " Counter Variable
+  W_FIELD(20)   TYPE C,                " Holds Text
+  W_VAL         TYPE STRING.           " Holds Field Symbol value
+
+* Constants.............................................................
+CONSTANTS:
+  C_ASC(10)  VALUE 'ASC',              " File type
+  C_X(1)     VALUE 'X',                " Flag
+  C_LANG(1)  VALUE 'E',                " Language
+  C_PROG(4)  VALUE 'PROG',             " Object type
+  C_STAT(10) VALUE 'RSMPE_STAT',       " Constant 'RSMPE_STAT'
+  C_FUNT(10) VALUE 'RSMPE_FUNT',       " Constant 'RSMPE_FUNT'
+  C_MEN(9)   VALUE 'RSMPE_MEN',        " Constant 'RSMPE_MEN'
+  C_MNLT(10) VALUE 'RSMPE_MNLT',       " Constant 'RSMPE_MNLT'
+  C_ACT(9)   VALUE 'RSMPE_ACT',        " Constant 'RSMPE_ACT'
+  C_BUT(9)   VALUE 'RSMPE_BUT',        " Constant 'RSMPE_BUT'
+  C_PFK(9)   VALUE 'RSMPE_PFK',        " Constant 'RSMPE_PFK'
+  C_STAF(10) VALUE 'RSMPE_STAF',       " Constant 'RSMPE_STAF'
+  C_ATRT(10) VALUE 'RSMPE_ATRT',       " Constant 'RSMPE_ATRT'
+  C_TITT(10) VALUE 'RSMPE_TITT',       " Constant 'RSMPE_TITT'
+  C_BUTS(10) VALUE 'RSMPE_BUTS',       " Constant 'RSMPE_BUTS'
+  C_SEP(1)   VALUE ';',                " Separator ';'
+  C_SEP2(1)  VALUE '*'.                " Separator '*'
+
+* Field Strings.........................................................
+DATA: FS_TRDIR      TYPE TYPE_S_TRDIR, " (Structure) TRDIR
+      FS_TADIR      TYPE TADIR,        " (Structure) TADIR
+      FS_TDEVC      TYPE TDEVC,        " (Structure) TDEVC
+      FS_THEAD      TYPE THEAD,        " (Structure) THEAD
+      FS_ADM        TYPE RSMPE_ADM,    " (Structure) RSMPE_ADM
+      FS_DOC(50000) TYPE C,            " (Structure) String
+      FS_STR(50000) TYPE C,            " (Structure) String
+      FS_DIR        TYPE TRDIR,        "  System Table TRDIR
+      FS_TRKEY      TYPE TRKEY,        " (Structure) TRKEY
+      FS_CODE       TYPE STRING,       " (Structure) Source Code
+      FS_ATTR       TYPE STRING,       " (Structure) Attributes
+      FS_DOCU       TYPE STRING,       " (Structure) Documentation
+      FS_TEXT1      TYPE STRING,       " (Structure) Texts
+      FS_PFS        TYPE STRING,       " (Structure) PF-Status
+      FS_DATA       TYPE STRING,       " (Structure) Complete Data
+      FS_DATA2      TYPE STRING,       " (Structure) Complete Data
+      FS_DOKIL      TYPE DOKIL,        " (Structure) Index for
+*                                      " Documentation
+      FS_TLINE      TYPE TLINE,        " (Structure) Docu Tables
+      FS_STA        TYPE RSMPE_STAT,   " (Structure) Text-dependentStat
+      FS_FUN        TYPE RSMPE_FUNT,   " (Structure) Language-specific
+*                                      " function texts
+      FS_MEN        TYPE RSMPE_MEN,    " (Structure) Menu structure
+      FS_MTX        TYPE RSMPE_MNLT,   " (Structure) Language-specific
+*                                      " menu texts
+      FS_ACT        TYPE RSMPE_ACT,    " (Structure) Menu bars
+      FS_BUT        TYPE RSMPE_BUT,    " (Structure) Pushbuttons
+      FS_PFK        TYPE RSMPE_PFK,    " (Structure) Function key
+*                                      " assignments
+      FS_SET        TYPE RSMPE_STAF,   " (Structure) Status functions
+      FS_ATRT       TYPE RSMPE_ATRT,   " (Structure) Attributes with
+*                                      " texts
+      FS_TIT        TYPE RSMPE_TITT,   " (Structure) Title Codes with
+*                                      " texts
+      FS_BIV        TYPE RSMPE_BUTS,   " (Structure) Fixed Functions on
+*                                      " Application Toolbars
+      FS_TXT        TYPE TEXTPOOL,     " (Structure) ABAP Text Pool
+*                                      " Definition
+      FS_DD03L      TYPE TYPE_S_DD03L. " Table Fields
+
+* Internal tables.......................................................
+DATA:
+*----------------------------------------------------------------------*
+* Internal table to hold Source code                                   *
+*----------------------------------------------------------------------*
+  T_CODE TYPE TABLE OF STRING,
+
+*----------------------------------------------------------------------*
+* Internal table to hold Attributes                                    *
+*----------------------------------------------------------------------*
+  T_ATTR TYPE STANDARD TABLE OF STRING,
+
+*----------------------------------------------------------------------*
+* Internal table to hold Documentation                                 *
+*----------------------------------------------------------------------*
+  T_DOCU TYPE TABLE OF STRING,
+
+*----------------------------------------------------------------------*
+* Internal table to hold Texts                                         *
+*----------------------------------------------------------------------*
+  T_TEXT TYPE TABLE OF STRING,
+
+*----------------------------------------------------------------------*
+* Internal table to hold PF-Status                                     *
+*----------------------------------------------------------------------*
+  T_PFS TYPE TABLE OF STRING,
+
+*----------------------------------------------------------------------*
+* Internal table to hold Complete data                                 *
+*----------------------------------------------------------------------*
+  T_DATA  TYPE TABLE OF STRING,
+  T_DATA2 TYPE TABLE OF STRING,
+
+*----------------------------------------------------------------------*
+* Internal table to hold Index for Documentation                       *
+*----------------------------------------------------------------------*
+  T_DOKIL TYPE TABLE OF DOKIL,
+
+*----------------------------------------------------------------------*
+* Internal table to hold Docu tables                                   *
+*----------------------------------------------------------------------*
+  T_TLINE TYPE TABLE OF TLINE,
+
+*----------------------------------------------------------------------*
+* PF-STATUS related tables                                             *
+*----------------------------------------------------------------------*
+      T_STA   TYPE TABLE OF RSMPE_STAT,
+      T_FUN   TYPE TABLE OF RSMPE_FUNT,
+      T_MEN   TYPE TABLE OF RSMPE_MEN,
+      T_MTX   TYPE TABLE OF RSMPE_MNLT,
+      T_ACT   TYPE TABLE OF RSMPE_ACT,
+      T_BUT   TYPE TABLE OF RSMPE_BUT,
+      T_PFK   TYPE TABLE OF RSMPE_PFK,
+      T_SET   TYPE TABLE OF RSMPE_STAF,
+      T_ATRT  TYPE TABLE OF RSMPE_ATRT,
+      T_TIT   TYPE TABLE OF RSMPE_TITT,
+      T_BIV   TYPE TABLE OF RSMPE_BUTS,
+      T_TXT   TYPE TABLE OF TEXTPOOL,
+      T_DD03L TYPE TABLE OF TYPE_S_DD03L.
+
+* Field Symbols........................................................
+FIELD-SYMBOLS: <FS1> TYPE ANY.
+
+*---------------------------------------------------------------------*
+*                       INITIALIZATION EVENT                          *
+*---------------------------------------------------------------------*
+INITIALIZATION.
+  MOVE : 'Selection Criteria'                             TO TIT1,
+         'Specify the required parameters'                TO TIT2,
+         'Download'                                       TO COMM1,
+         'Upload'                                         TO COMM2,
+         'Program Name'                                   TO COMM3,
+         'File Path'                                      TO COMM4,
+         'Specify only File Path in case of Download,'    TO COMM5,
+         'filename is taken from Program name by default' TO COMM6.
+
+*---------------------------------------------------------------------*
+*                  AT SELECTION-SCREEN OUTPUT EVENT                   *
+*---------------------------------------------------------------------*
+AT SELECTION-SCREEN OUTPUT.
+* For upload option
+  IF P_UPL = 'X'.
+    MOVE ' ' TO P_FILE.
+    MOVE ' ' TO P_PROG.
+  ENDIF.                               " IF P_UPL = 'X'
+
+* For download option
+  IF P_DWN = 'X'.
+    MOVE 'C:\' TO P_FILE.
+  ENDIF.                               " IF P_DWN = 'X'
+
+
+*----------------------------------------------------------------*
+*      AT SELECTION-SCREEN ON VALUE-REQUEST FOR FIELD EVENT      *
+*----------------------------------------------------------------*
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR P_FILE.
+* F4 help for file
+  PERFORM FILE_HELP CHANGING P_FILE.
+
+*--------------------------------------------------------------------*
+*                   AT SELECTION-SCREEN EVENT                        *
+*--------------------------------------------------------------------*
+AT SELECTION-SCREEN.
+* If program name is not entered on the screen
+  IF SSCRFIELDS-UCOMM = 'ONLI'.
+    IF P_PROG IS INITIAL.
+      MESSAGE 'Specify Program Name' TYPE 'E'.
+    ENDIF.                             " IF P_PROG IS INITIAL
+  ENDIF.                               " IF SSCRFIELDS-UCOMM = 'ONLI'
+
+* If file path is not entered on the screen
+  IF SSCRFIELDS-UCOMM = 'ONLI'.
+    IF P_FILE IS INITIAL.
+      MESSAGE 'Specify File Path' TYPE 'E'.
+    ENDIF.                             " IF P_FILE IS INITIAL
+  ENDIF.                               " IF SSCRFIELDS-UCOMM = 'ONLI'
+
+* check if program name entered is greater than 30 chars
+  W_STRLEN = STRLEN( P_PROG ).
+  IF W_STRLEN GT 30.
+    CONCATENATE 'Program name too long. '
+                'Names longer than 30 chars for internal use only'
+           INTO W_STR.
+    MESSAGE W_STR TYPE 'E'.
+    CLEAR W_STR.
+  ENDIF.                               " IF W_STRLEN GT 30...
+
+* Check if the file already exists
+  PERFORM CHECK_FILE.
+
+*---------------------------------------------------------------------*
+*                   START-OF-SELECTION EVENT                          *
+*---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+* When download option is selected
+  IF P_DWN = 'X'.
+
+* Get Program Name
+    PERFORM GET_PROG_NAME.
+
+* Check if the program is active or not
+    PERFORM CHECK_PROG_STATUS.
+
+* Get Source code
+    PERFORM GET_SOURCE USING FS_TRDIR-NAME.
+
+* Get Attributes
+    PERFORM GET_ATTR USING FS_TRDIR.
+
+* Get Documentaion maintained in all the languages
+* i.e; includes translations
+    PERFORM GET_DOCU.
+
+* Get all the texts maintained in all the languages
+* i.e; includes translations
+    PERFORM GET_TEXT USING FS_TRDIR-NAME.
+
+* Get PF-STATUS
+    PERFORM GET_PFSTAT USING FS_TRDIR-NAME.
+
+* File type
+    MOVE C_ASC TO W_TYPE.
+
+* Append all the data to final internal table
+    APPEND LINES OF T_CODE TO T_DATA.
+    APPEND LINES OF T_ATTR TO T_DATA.
+    APPEND LINES OF T_DOCU TO T_DATA.
+    APPEND LINES OF T_TEXT TO T_DATA.
+    APPEND LINES OF T_PFS  TO T_DATA.
+
+* Download file
+    PERFORM DOWNLOAD TABLES T_DATA
+                     USING  W_FILE
+                            W_TYPE.
+  ENDIF.                               " IF P_DWN = 'X'
+
+* When upload option is selected
+  IF P_UPL = 'X'.
+
+* Check if the program already exists
+    PERFORM CHECK_PROG.
+
+* File type
+    MOVE C_ASC TO W_TYPE.
+
+* Upload File
+    PERFORM UPLOAD TABLES T_DATA
+                   USING  W_FILE
+                          W_TYPE.
+
+* Split the data into different tables
+    PERFORM PROCESS_DATA.
+
+* Create New Program
+    PERFORM CREATE_PROG.
+  ENDIF.                               " IF P_UPL = 'X'
+
+*&---------------------------------------------------------------------*
+*&      Form  FILE_HELP                                                *
+*&---------------------------------------------------------------------*
+* Subroutine for f4 help for file                                      *
+*----------------------------------------------------------------------*
+* PV_FILE ==> File Name                                                *
+*----------------------------------------------------------------------*
+FORM FILE_HELP  CHANGING PV_FILE TYPE RLGRAP-FILENAME.
+  CALL FUNCTION 'F4_FILENAME'
+    IMPORTING
+      FILE_NAME = PV_FILE.
+ENDFORM.                               " FILE_HELP
+
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_FILE                                               *
+*&---------------------------------------------------------------------*
+* Subroutine to check if file exists or not                            *
+*----------------------------------------------------------------------*
+* There are no interface parameters to be passed to this subroutine    *
+*----------------------------------------------------------------------*
+FORM CHECK_FILE .
+
+* Concatenate Filepath and Program name to get filename in case
+* of download
+  IF P_DWN = 'X'.
+    IF P_FILE NS '.txt'.
+      CONCATENATE P_FILE
+                  P_PROG
+                  '.txt'
+             INTO P_FILE.
+    ENDIF.                             " IF p_file NS...
+  ENDIF.                               " IF P_DWN = 'X'
+
+* Populate file and program variables
+  MOVE P_FILE TO W_FILE.
+  MOVE P_PROG TO W_PROG2.
+  MOVE P_PROG TO W_PROG3.
+
+  CALL FUNCTION 'TMP_GUI_GET_FILE_EXIST'
+    EXPORTING
+      FNAME          = P_FILE
+    IMPORTING
+      EXIST          = W_EXIST
+    EXCEPTIONS
+      FILEINFO_ERROR = 1
+      OTHERS         = 2.
+
+  IF SY-SUBRC EQ 0.
+* If file already exists in case of download
+    IF W_EXIST = C_X AND P_DWN = 'X'.
+      CLEAR: W_STR,W_ANS.
+      CONCATENATE 'File '
+                   P_FILE
+                  ' already exists,'
+                  'do you want to overwrite it?'
+             INTO W_STR
+     SEPARATED BY SPACE.
+
+      CALL FUNCTION 'POPUP_TO_CONFIRM'
+        EXPORTING
+          TEXT_QUESTION         = W_STR
+          DISPLAY_CANCEL_BUTTON = ' '
+        IMPORTING
+          ANSWER                = W_ANS
+        EXCEPTIONS
+          TEXT_NOT_FOUND        = 1.
+
+      IF SY-SUBRC = 0.
+* If user doesn't want to overwrite the existing file,
+* allow him to specify different file name, otherwise continue
+        IF W_ANS = '2'.
+          MESSAGE 'Specify valid Filename along with Path and Extension'
+          TYPE 'S'.
+          STOP.
+        ENDIF.                         " IF w_ans = '2'
+      ENDIF.                           " IF sy-subrc = 0
+* If file does not exist in case of upload
+    ELSEIF W_EXIST NE C_X AND P_UPL = 'X'.
+      MESSAGE 'File does not exist' TYPE 'S'.
+      STOP.
+    ENDIF.                             " IF W_EXIST = C_X...
+  ENDIF.                               " IF SY-SUBRC EQ 0
+
+  CLEAR: W_STR,W_ANS.
+
+ENDFORM.                               " CHECK_FILE
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_PROG_NAME                                            *
+*&---------------------------------------------------------------------*
+* Subroutine to get program name                                       *
+*----------------------------------------------------------------------*
+* There are no interface parameters to be passed to this subroutine    *
+*----------------------------------------------------------------------*
+FORM GET_PROG_NAME.
+
+  MOVE P_PROG TO W_PROG.
+
+  SELECT SINGLE NAME                   " ABAP Program Name
+                EDTX                   " Editor lock flag
+                SUBC                   " Program type
+                SECU                   " Authorization Group
+                FIXPT                  " Fixed point arithmetic
+                SSET                   " Start only via variant
+                UCCHECK                " Unicode check was performed
+                RSTAT                  " Status
+                APPL                   " Application
+                LDBNAME                " LDB Name
+                TYPE                   " Selection screen version
+           FROM TRDIR
+           INTO FS_TRDIR
+          WHERE NAME = W_PROG.
+
+  IF SY-SUBRC NE 0.
+    MESSAGE 'Invalid Program name' TYPE 'S'.
+    STOP.
+  ENDIF.                               " IF SY-SUBRC NE 0
+ENDFORM.                               " GET_PROG_NAME
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_SOURCE                                               *
+*&---------------------------------------------------------------------*
+* Subroutine to get source code                                        *
+*----------------------------------------------------------------------*
+* PV_NAME ==> Program Name                                             *
+*----------------------------------------------------------------------*
+FORM GET_SOURCE USING PV_NAME TYPE TRDIR-NAME.
+
+  READ REPORT PV_NAME INTO T_CODE.
+
+  IF SY-SUBRC EQ 0.
+
+    CONCATENATE '**This code is automatically generated by YASH program'
+                ', please do not make any changes**'
+           INTO FS_CODE
+   SEPARATED BY SPACE.
+    INSERT FS_CODE INTO T_CODE INDEX 1.
+
+    LOOP AT T_CODE INTO FS_CODE.
+      IF SY-TABIX NE 1.
+        MOVE SY-TABIX TO W_INDEX.
+        CONCATENATE 'C'
+                    FS_CODE
+               INTO FS_CODE.
+        MODIFY T_CODE FROM FS_CODE INDEX W_INDEX.
+      ELSE.
+        MOVE SY-TABIX TO W_INDEX.
+        CONCATENATE 'H'
+                    FS_CODE
+               INTO FS_CODE.
+        MODIFY T_CODE FROM FS_CODE INDEX W_INDEX.
+
+      ENDIF.                           " IF SY-TABIX NE 1
+    ENDLOOP.                           " LOOP AT T_CODE INTO FS_CODE...
+  ENDIF.                               " IF SY-SUBRC EQ 0
+ENDFORM.                               " GET_SOURCE
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_ATTR                                                 *
+*&---------------------------------------------------------------------*
+* Subroutine to get attributes                                         *
+*----------------------------------------------------------------------*
+* PV_TRDIR ==> TRDIR structure                                         *
+*----------------------------------------------------------------------*
+FORM GET_ATTR USING PV_TRDIR TYPE TYPE_S_TRDIR.
+
+* Report Title
+  SELECT SINGLE TEXT                   " Report Title
+           FROM TRDIRT
+           INTO W_TEXT
+          WHERE NAME  = P_PROG
+            AND SPRSL = C_LANG.
+
+  IF SY-SUBRC EQ 0.
+    CONCATENATE 'A'
+                'TEXT'
+                W_TEXT
+           INTO FS_ATTR.
+    APPEND FS_ATTR TO T_ATTR.
+    CLEAR  FS_ATTR.
+  ENDIF.                               " IF SY-SUBRC EQ 0
+
+
+* Type
+  CONCATENATE 'A'
+              'SUBC'
+              PV_TRDIR-SUBC
+         INTO FS_ATTR.
+  APPEND FS_ATTR TO T_ATTR.
+  CLEAR  FS_ATTR.
+
+* Status
+  CONCATENATE 'A'
+              'RSTAT'
+              PV_TRDIR-RSTAT
+         INTO FS_ATTR.
+  APPEND FS_ATTR TO T_ATTR.
+  CLEAR  FS_ATTR.
+
+* Application
+  SELECT SINGLE APPL                   " Applications programs,function
+*                                      " modules, logical databases
+           FROM TAPLP
+           INTO W_APPL
+          WHERE APPL = PV_TRDIR-APPL.
+
+  IF SY-SUBRC EQ 0.
+    CONCATENATE 'A'
+                'APPL'
+                W_APPL
+           INTO FS_ATTR.
+    APPEND FS_ATTR TO T_ATTR.
+    CLEAR  FS_ATTR.
+  ENDIF.                               " IF SY-SUBRC EQ 0
+
+* Authorization Group
+  CONCATENATE 'A'
+              'SECU'
+              PV_TRDIR-SECU
+         INTO FS_ATTR.
+  APPEND FS_ATTR TO T_ATTR.
+  CLEAR  FS_ATTR.
+
+* Package
+  CALL FUNCTION 'AKB_GET_TADIR'
+    EXPORTING
+      OBJ_TYPE         = C_PROG
+      OBJ_NAME         = PV_TRDIR-NAME
+    IMPORTING
+      TADIR            = FS_TADIR
+      TDEVC            = FS_TDEVC
+    EXCEPTIONS
+      OBJECT_NOT_FOUND = 1
+      OTHERS           = 2.
+
+  IF SY-SUBRC EQ 0.
+    CONCATENATE 'A'
+                'DEVCLASS'
+                FS_TDEVC-DEVCLASS
+           INTO FS_ATTR.
+    APPEND FS_ATTR TO T_ATTR.
+    CLEAR  FS_ATTR.
+  ELSE.
+    MESSAGE 'Object not found' TYPE 'S'.
+  ENDIF.                               " IF SY-SUBRC EQ 0
+
+* Logical database
+  CONCATENATE 'A'
+              'LDBNAME'
+              PV_TRDIR-LDBNAME
+         INTO FS_ATTR.
+  APPEND FS_ATTR TO T_ATTR.
+  CLEAR  FS_ATTR.
+
+* Selection screen version
+  CONCATENATE 'A'
+              'TYPE'
+              PV_TRDIR-TYPE
+         INTO FS_ATTR.
+  APPEND FS_ATTR TO T_ATTR.
+  CLEAR  FS_ATTR.
+
+* Editor Lock
+  CONCATENATE 'A'
+              'EDTX'
+              PV_TRDIR-EDTX
+         INTO FS_ATTR.
+  APPEND FS_ATTR TO T_ATTR.
+  CLEAR  FS_ATTR.
+
+* Fixed point arithmetic
+  CONCATENATE 'A'
+              'FIXPT'
+              PV_TRDIR-FIXPT
+         INTO FS_ATTR.
+  APPEND FS_ATTR TO T_ATTR.
+  CLEAR  FS_ATTR.
+
+* Unicode checks active
+  CONCATENATE 'A'
+              'UCCHECK'
+              PV_TRDIR-UCCHECK
+         INTO FS_ATTR.
+  APPEND FS_ATTR TO T_ATTR.
+  CLEAR  FS_ATTR.
+
+* Start using variant
+  CONCATENATE 'A'
+              'SSET'
+              PV_TRDIR-SSET
+              INTO FS_ATTR.
+  APPEND FS_ATTR TO T_ATTR.
+  CLEAR  FS_ATTR.
+
+* Variables for documentation
+* Program ID
+  CONCATENATE 'D'
+              'PGMID'
+              FS_TADIR-PGMID
+         INTO FS_DOCU.
+  APPEND FS_DOCU TO T_DOCU.
+  CLEAR  FS_DOCU.
+
+* Object Type
+  CONCATENATE 'D'
+              'OBJECT'
+              FS_TADIR-OBJECT
+         INTO FS_DOCU.
+  APPEND FS_DOCU TO T_DOCU.
+  CLEAR  FS_DOCU.
+ENDFORM.                               " GET_ATTR
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_DOCU                                                 *
+*&---------------------------------------------------------------------*
+* Subroutine to get documentation                                      *
+*----------------------------------------------------------------------*
+* There are no interface parameters to be passed to this subroutine    *
+*----------------------------------------------------------------------*
+FORM GET_DOCU.
+
+* Get Index for Documentation
+  SELECT ID                            " Document class
+         OBJECT                        " Documentation Object
+         LANGU                         " Documentation Language
+         TYP                           " Documentation type
+         VERSION                       " Version of DocumentationModule
+         DOKSTATE                      " Status of Documentation Module
+    FROM DOKIL
+    INTO TABLE T_DOKIL
+   WHERE OBJECT = W_PROG.
+
+  IF SY-SUBRC EQ 0.
+    LOOP AT T_DOKIL INTO FS_DOKIL.
+      CLEAR: FS_THEAD,
+             FS_TLINE,
+             T_TLINE[].
+
+      CALL FUNCTION 'DOCU_READ'
+        EXPORTING
+          ID      = FS_DOKIL-ID
+          LANGU   = FS_DOKIL-LANGU
+          OBJECT  = FS_DOKIL-OBJECT
+          TYP     = FS_DOKIL-TYP
+          VERSION = FS_DOKIL-VERSION
+        IMPORTING
+          HEAD    = FS_THEAD
+        TABLES
+          LINE    = T_TLINE.
+
+* Text lines
+      LOOP AT T_TLINE INTO FS_TLINE.
+        CONCATENATE 'DLINE'
+                    FS_TLINE-TDFORMAT
+                    FS_TLINE-TDLINE
+               INTO FS_DOCU
+       SEPARATED BY ';'.
+        APPEND FS_DOCU TO T_DOCU.
+        CLEAR  FS_DOCU.
+      ENDLOOP.                         " LOOP AT T_TLINE INTO FS_TLINE
+
+* Text header
+      CONCATENATE 'DHEAD'
+                  FS_THEAD-TDOBJECT FS_THEAD-TDNAME     FS_THEAD-TDID
+                  FS_THEAD-TDSPRAS  FS_THEAD-TDTITLE    FS_THEAD-TDFORM
+                  FS_THEAD-TDSTYLE  FS_THEAD-TDVERSION
+                  FS_THEAD-TDFUSER  FS_THEAD-TDFRELES
+                  FS_THEAD-TDFDATE  FS_THEAD-TDFTIME
+                  FS_THEAD-TDLUSER  FS_THEAD-TDLRELES
+                  FS_THEAD-TDLDATE  FS_THEAD-TDLTIME
+                  FS_THEAD-TDLINESIZE
+                  FS_THEAD-TDTXTLINES FS_THEAD-TDHYPHENAT
+                  FS_THEAD-TDOSPRAS   FS_THEAD-TDTRANSTAT
+                  FS_THEAD-TDMACODE1  FS_THEAD-TDMACODE2
+                  FS_THEAD-TDREFOBJ   FS_THEAD-TDREFNAME
+                  FS_THEAD-TDREFID    FS_THEAD-TDTEXTTYPE
+                  FS_THEAD-TDCOMPRESS FS_THEAD-MANDT FS_THEAD-TDOCLASS
+                  FS_THEAD-LOGSYS
+             INTO FS_DOCU
+     SEPARATED BY ';'.
+
+      APPEND FS_DOCU TO T_DOCU.
+      CLEAR  FS_DOCU.
+
+* Other parameters
+* Documentation Status
+      CONCATENATE 'D'
+                  'DOKSTATE'
+                  FS_DOKIL-DOKSTATE
+             INTO FS_DOCU.
+      APPEND FS_DOCU TO T_DOCU.
+      CLEAR  FS_DOCU.
+
+* Documentation Type
+      CONCATENATE 'D'
+                  'TYP'
+                  FS_DOKIL-TYP
+             INTO FS_DOCU.
+      APPEND FS_DOCU TO T_DOCU.
+      CLEAR  FS_DOCU.
+
+* Documentation Version
+      CONCATENATE 'D'
+                  'DOKVERSION'
+                  FS_DOKIL-VERSION
+             INTO FS_DOCU.
+      APPEND FS_DOCU TO T_DOCU.
+      CLEAR  FS_DOCU.
+    ENDLOOP.                           " LOOP AT T_DOKIL INTO FS_DOKIL
+  ENDIF.                               " IF SY-SUBRC EQ 0
+ENDFORM.                               " GET_DOCU
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_TEXT                                                 *
+*&---------------------------------------------------------------------*
+* Subroutine to get text elements                                      *
+*----------------------------------------------------------------------*
+* PV_NAME ==> Program Name                                             *
+*----------------------------------------------------------------------*
+FORM GET_TEXT USING PV_NAME TYPE TRDIR-NAME.
+
+  DATA: LV_LEN(10) TYPE C.
+
+  TYPES: BEGIN OF TYPE_S_TXTLANG,
+           LANGUAGE TYPE SPRAS,
+         END   OF TYPE_S_TXTLANG.
+
+  DATA: FS_TXTLANG TYPE TYPE_S_TXTLANG,
+        LT_TXTLANG TYPE TABLE OF TYPE_S_TXTLANG.
+
+  SELECT LANGUAGE
+    FROM REPOTEXT
+    INTO TABLE LT_TXTLANG
+   WHERE PROGNAME = PV_NAME.
+
+  IF SY-SUBRC EQ 0.
+
+    LOOP AT LT_TXTLANG INTO FS_TXTLANG.
+      READ TEXTPOOL PV_NAME INTO T_TXT LANGUAGE FS_TXTLANG-LANGUAGE.
+      IF SY-SUBRC EQ 0.
+        LOOP AT T_TXT INTO FS_TXT.
+          MOVE FS_TXT-LENGTH TO LV_LEN.
+          CONCATENATE 'T'          FS_TXTLANG-LANGUAGE
+                      FS_TXT-ID    FS_TXT-KEY
+                      FS_TXT-ENTRY LV_LEN
+                     INTO FS_TEXT1 SEPARATED BY '*%'.
+          APPEND FS_TEXT1 TO T_TEXT.
+          CLEAR: FS_TEXT1,
+                 LV_LEN.
+        ENDLOOP.                       " LOOP AT T_TXT INTO FS_TXT
+* IF report title is not populated, exceptional cases
+        CLEAR: W_LANG.
+        MOVE SY-LANGU TO W_LANG.
+        IF FS_TXTLANG-LANGUAGE = W_LANG.
+          CLEAR: FS_TXT-KEY,
+                 LV_LEN,
+                 FS_TEXT1,
+                 FS_TXT.
+
+          READ TABLE T_TXT INTO FS_TXT WITH KEY ID = 'R'.
+          IF SY-SUBRC NE 0.
+            LV_LEN = STRLEN( W_TEXT ).
+            CONCATENATE 'T'          FS_TXTLANG-LANGUAGE
+                        'R'          FS_TXT-KEY
+                        W_TEXT       LV_LEN
+                       INTO FS_TEXT1 SEPARATED BY '*%'.
+            APPEND FS_TEXT1 TO T_TEXT.
+            CLEAR: FS_TEXT1,
+                   LV_LEN.
+          ENDIF.                       " IF SY-SUBRC NE 0
+        ENDIF.                         " IF FS_TXTLANG-LANGUAGE...
+      ENDIF.                           " IF SY-SUBRC EQ 0
+    ENDLOOP.                           " LOOP AT lt_txtlang
+  ENDIF.                               " IF SY-SUBRC EQ 0
+ENDFORM.                               " GET_TEXT
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_PFSTAT                                               *
+*&---------------------------------------------------------------------*
+* Subroutine to get pf-status                                          *
+*----------------------------------------------------------------------*
+* PV_NAME ==> Program Name                                             *
+*----------------------------------------------------------------------*
+FORM GET_PFSTAT USING PV_NAME TYPE TRDIR-NAME.
+
+  DATA:
+    LT_LANGU TYPE TABLE OF SPRSL,
+    FS_LANGU TYPE SPRSL.
+
+  SELECT SPRSL
+    FROM RSMPTEXTS
+    INTO TABLE LT_LANGU
+   WHERE PROGNAME = PV_NAME.
+
+  IF SY-SUBRC EQ 0.
+    SORT LT_LANGU.
+
+    DELETE ADJACENT DUPLICATES FROM LT_LANGU.
+
+    LOOP AT LT_LANGU INTO FS_LANGU.
+      CLEAR: FS_ADM,
+             FS_STA, T_STA[],
+             FS_FUN, T_FUN[],
+             FS_MEN, T_MEN[],
+             FS_MTX, T_MTX[],
+             FS_ACT, T_ACT[],
+             FS_BUT, T_BUT[],
+             FS_PFK, T_PFK[],
+             FS_SET, T_SET[],
+             FS_ATRT,T_ATRT[],
+             FS_TIT, T_TIT[],
+             FS_BIV, T_BIV[].
+
+      CALL FUNCTION 'RS_CUA_INTERNAL_FETCH'
+        EXPORTING
+          PROGRAM         = PV_NAME
+          LANGUAGE        = FS_LANGU
+        IMPORTING
+          ADM             = FS_ADM
+        TABLES
+          STA             = T_STA
+          FUN             = T_FUN
+          MEN             = T_MEN
+          MTX             = T_MTX
+          ACT             = T_ACT
+          BUT             = T_BUT
+          PFK             = T_PFK
+          SET             = T_SET
+          DOC             = T_ATRT
+          TIT             = T_TIT
+          BIV             = T_BIV
+        EXCEPTIONS
+          NOT_FOUND       = 1
+          UNKNOWN_VERSION = 2
+          OTHERS          = 3.
+
+      IF SY-SUBRC EQ 0.
+
+        CONCATENATE 'PLAN'
+                    FS_LANGU
+               INTO FS_PFS.
+        APPEND FS_PFS TO T_PFS.
+        CLEAR  FS_PFS.
+
+        CLEAR: W_CNT3.
+        PERFORM DOWNLOAD_PF_TABS TABLES T_STA
+                                 USING  C_STAT
+                                        FS_STA
+                                        'FS_STA-'
+                                        'PSTA'.
+
+        PERFORM DOWNLOAD_PF_TABS TABLES T_FUN
+                                 USING  C_FUNT
+                                        FS_FUN
+                                        'FS_FUN-'
+                                        'PFUN'.
+
+        PERFORM DOWNLOAD_PF_TABS TABLES T_MEN
+                                 USING  C_MEN
+                                        FS_MEN
+                                        'FS_MEN-'
+                                        'PMEN'.
+
+        PERFORM DOWNLOAD_PF_TABS TABLES T_MTX
+                                 USING  C_MNLT
+                                        FS_MTX
+                                        'FS_MTX-'
+                                        'PMTX'.
+
+        PERFORM DOWNLOAD_PF_TABS TABLES T_ACT
+                                 USING  C_ACT
+                                        FS_ACT
+                                        'FS_ACT-'
+                                        'PACT'.
+
+        PERFORM DOWNLOAD_PF_TABS TABLES T_BUT
+                                 USING  C_BUT
+                                        FS_BUT
+                                        'FS_BUT-'
+                                        'PBUT'.
+
+        PERFORM DOWNLOAD_PF_TABS TABLES T_PFK
+                                 USING  C_PFK
+                                        FS_PFK
+                                        'FS_PFK-'
+                                        'PPFK'.
+
+        PERFORM DOWNLOAD_PF_TABS TABLES T_SET
+                                 USING  C_STAF
+                                        FS_SET
+                                        'FS_SET-'
+                                        'PSET'.
+
+        PERFORM DOWNLOAD_PF_TABS TABLES T_ATRT
+                                 USING  C_ATRT
+                                        FS_ATRT
+                                        'FS_ATRT-'
+                                        'PATR'.
+
+        PERFORM DOWNLOAD_PF_TABS TABLES T_TIT
+                                 USING  C_TITT
+                                        FS_TIT
+                                        'FS_TIT-'
+                                        'PTIT'.
+
+        PERFORM DOWNLOAD_PF_TABS TABLES T_BIV
+                                 USING  C_BUTS
+                                        FS_BIV
+                                        'FS_BIV-'
+                                        'PBIV'.
+        CLEAR: W_CNT3.
+
+        CONCATENATE 'PADM'
+                    FS_ADM-ACTCODE    FS_ADM-MENCODE    FS_ADM-PFKCODE
+                    FS_ADM-DEFAULTACT FS_ADM-DEFAULTPFK
+                    FS_ADM-MOD_LANGU
+               INTO FS_PFS
+       SEPARATED BY ';'.
+        APPEND FS_PFS TO T_PFS.
+        CLEAR  FS_PFS.
+
+      ELSE.
+        MESSAGE 'Error during PF-STATUS download' TYPE 'E' DISPLAY LIKE
+        'S'.
+      ENDIF.                           " IF SY-SUBRC EQ 0
+    ENDLOOP.                           " LOOP AT LT_LANGU INTO FS_LANGU
+  ENDIF.                               " IF SY-SUBRC EQ 0
+
+  CONCATENATE 'PTRK'
+              FS_TADIR-DEVCLASS
+              FS_TADIR-OBJECT
+              P_PROG
+         INTO FS_PFS
+ SEPARATED BY ';'.
+  APPEND FS_PFS TO T_PFS.
+  CLEAR  FS_PFS.
+ENDFORM.                               " GET_PFSTAT
+
+*&---------------------------------------------------------------------*
+*&      Form  DOWNLOAD                                                 *
+*&---------------------------------------------------------------------*
+* Subroutine to downlaod File to PC                                    *
+*----------------------------------------------------------------------*
+* PT_ITAB                                                              *
+* PC_FILE ==> Filename                                                 *
+* PC_TYPE ==> Filetype                                                 *
+*----------------------------------------------------------------------*
+FORM DOWNLOAD TABLES PT_ITAB
+              USING  PC_FILE TYPE STRING
+                     PC_TYPE TYPE CHAR10.
+
+  CALL FUNCTION 'GUI_DOWNLOAD'
+    EXPORTING
+      FILENAME                = PC_FILE
+      FILETYPE                = PC_TYPE
+    TABLES
+      DATA_TAB                = PT_ITAB
+    EXCEPTIONS
+      FILE_WRITE_ERROR        = 1
+      NO_BATCH                = 2
+      GUI_REFUSE_FILETRANSFER = 3
+      INVALID_TYPE            = 4
+      NO_AUTHORITY            = 5
+      UNKNOWN_ERROR           = 6
+      HEADER_NOT_ALLOWED      = 7
+      SEPARATOR_NOT_ALLOWED   = 8
+      FILESIZE_NOT_ALLOWED    = 9
+      HEADER_TOO_LONG         = 10
+      DP_ERROR_CREATE         = 11
+      DP_ERROR_SEND           = 12
+      DP_ERROR_WRITE          = 13
+      UNKNOWN_DP_ERROR        = 14
+      ACCESS_DENIED           = 15
+      DP_OUT_OF_MEMORY        = 16
+      DISK_FULL               = 17
+      DP_TIMEOUT              = 18
+      FILE_NOT_FOUND          = 19
+      DATAPROVIDER_EXCEPTION  = 20
+      CONTROL_FLUSH_ERROR     = 21
+      OTHERS                  = 22.
+
+  IF SY-SUBRC NE 0.
+    MESSAGE 'Error during file download' TYPE 'S'.
+  ENDIF.                               " IF SY-SUBRC NE 0
+ENDFORM.                               " DOWNLOAD
+
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_PROG_STATUS                                        *
+*&---------------------------------------------------------------------*
+* Subroutine to check program status                                   *
+*----------------------------------------------------------------------*
+* There are no interface parameters to be passed to this subroutine    *
+*----------------------------------------------------------------------*
+FORM CHECK_PROG_STATUS .
+
+  SELECT OBJ_NAME
+    FROM DWINACTIV
+    INTO W_OBJ
+      UP TO 1 ROWS
+   WHERE OBJ_NAME = P_PROG.
+
+  ENDSELECT.                           " SELECT OBJ_NAME...
+
+  IF SY-SUBRC EQ 0.
+    MESSAGE 'Given program is inactive, activate it before downloading'
+       TYPE 'S'.
+    STOP.
+  ENDIF.                               " IF SY-SUBRC EQ 0
+ENDFORM.                               " CHECK_PROG_STATUS
+
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_PROG                                               *
+*&---------------------------------------------------------------------*
+* Subroutine to check if the program exists                            *
+*----------------------------------------------------------------------*
+* There are no interface parameters to be passed to this subroutine    *
+*----------------------------------------------------------------------*
+FORM CHECK_PROG .
+
+  IF P_PROG+0(1) = 'Y'
+  OR P_PROG+0(1) = 'Z'.
+    SELECT SINGLE NAME                 " ABAP Program Name
+             FROM TRDIR
+             INTO W_NAME
+            WHERE NAME = P_PROG.
+
+    IF SY-SUBRC EQ 0.
+
+      CONCATENATE 'Program '
+                   P_PROG
+                  ' already exists,'
+                  'do you want to overwrite it?'
+             INTO W_STR
+     SEPARATED BY SPACE.
+
+      CALL FUNCTION 'POPUP_TO_CONFIRM'
+        EXPORTING
+          TEXT_QUESTION         = W_STR
+          DISPLAY_CANCEL_BUTTON = ' '
+        IMPORTING
+          ANSWER                = W_ANS
+        EXCEPTIONS
+          TEXT_NOT_FOUND        = 1
+          OTHERS                = 2.
+      IF SY-SUBRC EQ 0.
+* If user doesn't want to overwrite the existing program,
+* Stop and come out of the program
+        IF W_ANS = '2'.
+          STOP.
+* If the user wants to overwrite the existing program,
+* delete it and continue
+        ELSE.
+          CALL FUNCTION 'RS_DELETE_PROGRAM'
+            EXPORTING
+              PROGRAM            = P_PROG
+              WITH_CUA           = 'X'
+            EXCEPTIONS
+              ENQUEUE_LOCK       = 1
+              OBJECT_NOT_FOUND   = 2
+              PERMISSION_FAILURE = 3
+              REJECT_DELETION    = 4.
+
+          IF SY-SUBRC EQ 1.
+            MESSAGE
+            'Another User is currently editing the given program'
+               TYPE 'S'.
+            STOP.
+          ENDIF.                       " IF SY-SUBRC EQ 1
+        ENDIF.                         " IF W_ANS = '2'
+      ENDIF.                           " IF SY-SUBRC EQ 0
+      CLEAR W_STR.
+    ENDIF.                             " IF SY-SUBRC EQ 0
+  ELSE.
+    MESSAGE 'Test objects cannot be created in foreign namespaces'
+       TYPE 'S'.
+    STOP.
+  ENDIF.                               " IF P_PROG+0(1) = 'Y'...
+ENDFORM.                               " CHECK_PROG
+
+*&---------------------------------------------------------------------*
+*&      Form  UPLOAD                                                   *
+*&---------------------------------------------------------------------*
+* Subroutine to Upload file data to internal table                     *
+*----------------------------------------------------------------------*
+* PT_ITAB                                                              *
+* PC_FILE ==> Filename                                                 *
+* PC_TYPE ==> Filetype                                                 *
+*----------------------------------------------------------------------*
+FORM UPLOAD  TABLES   PT_ITAB
+             USING    PC_FILE TYPE STRING
+                      PC_TYPE TYPE CHAR10.
+
+  CALL FUNCTION 'GUI_UPLOAD'
+    EXPORTING
+      FILENAME                = PC_FILE
+      FILETYPE                = PC_TYPE
+    TABLES
+      DATA_TAB                = PT_ITAB
+    EXCEPTIONS
+      FILE_OPEN_ERROR         = 1
+      FILE_READ_ERROR         = 2
+      NO_BATCH                = 3
+      GUI_REFUSE_FILETRANSFER = 4
+      INVALID_TYPE            = 5
+      NO_AUTHORITY            = 6
+      UNKNOWN_ERROR           = 7
+      BAD_DATA_FORMAT         = 8
+      HEADER_NOT_ALLOWED      = 9
+      SEPARATOR_NOT_ALLOWED   = 10
+      HEADER_TOO_LONG         = 11
+      UNKNOWN_DP_ERROR        = 12
+      ACCESS_DENIED           = 13
+      DP_OUT_OF_MEMORY        = 14
+      DISK_FULL               = 15
+      DP_TIMEOUT              = 16
+      OTHERS                  = 17.
+
+  IF SY-SUBRC NE 0.
+    MESSAGE 'Error during file upload' TYPE 'S'.
+  ENDIF.                               " IF SY-SUBRC NE 0
+ENDFORM.                               " UPLOAD
+
+*&---------------------------------------------------------------------*
+*&      Form  PROCESS_DATA                                             *
+*&---------------------------------------------------------------------*
+* Subroutine to process data                                           *
+*----------------------------------------------------------------------*
+* There are no interface parameters to be passed to this subroutine    *
+*----------------------------------------------------------------------*
+FORM PROCESS_DATA .
+
+  LOOP AT T_DATA INTO FS_DATA.
+    CLEAR: FS_DOC,
+           FS_STR.
+    MOVE SY-TABIX TO W_INDEX.
+
+    CASE FS_DATA+0(1).
+* Header Text
+      WHEN 'H'.
+        DELETE T_DATA INDEX W_INDEX.
+
+* Code
+      WHEN 'C'.
+        MOVE FS_DATA+1 TO FS_CODE.
+        APPEND FS_CODE TO T_CODE.
+        CLEAR  FS_CODE.
+        DELETE T_DATA INDEX W_INDEX.
+
+* Documentation
+      WHEN 'D'.
+        MOVE FS_DATA+1 TO FS_DOC.
+        IF FS_DOC+0(5) = 'PGMID'.
+          SHIFT FS_DOC BY 5 PLACES.
+          MOVE FS_DOC TO W_PGMID.
+
+        ELSEIF FS_DOC+0(6) = 'OBJECT'.
+          SHIFT FS_DOC BY 6 PLACES.
+          MOVE FS_DOC TO W_OBJECT.
+        ENDIF.                         " IF FS_DOC+0(5) = 'PGMID'
+
+* Attributes
+      WHEN 'A'.
+        MOVE FS_DATA+1 TO FS_DOC.
+        IF FS_DOC+0(4) = 'SUBC'.
+          SHIFT FS_DOC BY 4 PLACES.
+          MOVE FS_DOC TO FS_DIR-SUBC.
+
+        ELSEIF FS_DOC+0(5) = 'FIXPT'.
+          SHIFT FS_DOC BY 5 PLACES.
+          MOVE FS_DOC TO FS_DIR-FIXPT.
+
+        ELSEIF FS_DOC+0(7) = 'UCCHECK'.
+          SHIFT FS_DOC BY 7 PLACES.
+          MOVE FS_DOC TO FS_DIR-UCCHECK.
+
+        ELSEIF FS_DOC+0(4) = 'SECU'.
+          SHIFT FS_DOC BY 4 PLACES.
+          MOVE FS_DOC TO FS_DIR-SECU.
+
+        ELSEIF FS_DOC+0(4) = 'EDTX'.
+          SHIFT FS_DOC BY 4 PLACES.
+          MOVE FS_DOC TO FS_DIR-EDTX.
+
+        ELSEIF FS_DOC+0(4) = 'SSET'.
+          SHIFT FS_DOC BY 4 PLACES.
+          MOVE FS_DOC TO FS_DIR-SSET.
+
+        ELSEIF FS_DOC+0(7) = 'LDBNAME'.
+          SHIFT FS_DOC BY 7 PLACES.
+          MOVE FS_DOC TO FS_DIR-LDBNAME.
+
+        ELSEIF FS_DOC+0(4) = 'APPL'.
+          SHIFT FS_DOC BY 4 PLACES.
+          MOVE FS_DOC TO FS_DIR-APPL.
+
+        ELSEIF FS_DOC+0(5) = 'RSTAT'.
+          SHIFT FS_DOC BY 5 PLACES.
+          MOVE FS_DOC TO FS_DIR-RSTAT.
+
+        ELSEIF FS_DOC+0(4) = 'TYPE'.
+          SHIFT FS_DOC BY 4 PLACES.
+          MOVE FS_DOC TO FS_DIR-TYPE.
+        ENDIF.                         " IF FS_DOC+0(4)..
+
+        DELETE T_DATA INDEX W_INDEX.
+
+* PF-STATUS
+      WHEN 'P'.
+        MOVE FS_DATA+1 TO FS_DOC.
+        IF FS_DOC+0(3) = 'TRK'.
+          FS_STR = FS_DOC+4.
+          SPLIT FS_STR AT ';'
+                     INTO FS_TRKEY-DEVCLASS
+                          FS_TRKEY-OBJ_TYPE
+                          FS_TRKEY-OBJ_NAME.
+        ENDIF.                         " IF FS_DOC+0(3)
+
+* Text elements
+      WHEN 'T'.
+        MOVE FS_DATA TO FS_DATA2.
+        APPEND FS_DATA2 TO T_DATA2.
+        CLEAR  FS_DATA2.
+        DELETE T_DATA INDEX W_INDEX.
+    ENDCASE.                           " CASE T_DATA+0(1)
+  ENDLOOP.                             " LOOP AT T_DATA...
+ENDFORM.                               " PROCESS_DATA
+
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_PROG                                              *
+*&---------------------------------------------------------------------*
+* Subroutine to create new program                                     *
+*----------------------------------------------------------------------*
+* There are no interface parameters to be passed to this subroutine    *
+*----------------------------------------------------------------------*
+FORM CREATE_PROG .
+
+* Creates a new program uploading source code and attributes
+  INSERT REPORT P_PROG
+           FROM T_CODE
+DIRECTORY ENTRY FS_DIR.
+
+* Create TADIR entry for the new program
+  CALL FUNCTION 'TR_TADIR_POPUP_ENTRY_E071'
+    EXPORTING
+      WI_E071_PGMID             = W_PGMID
+      WI_E071_OBJECT            = W_OBJECT
+      WI_E071_OBJ_NAME          = W_PROG2
+    IMPORTING
+      WE_TADIR                  = FS_TADIR
+      ES_TDEVC                  = FS_TDEVC
+    EXCEPTIONS
+      DISPLAY_MODE              = 1
+      EXIT                      = 2
+      GLOBAL_TADIR_INSERT_ERROR = 3
+      NO_REPAIR_SELECTED        = 4
+      NO_SYSTEMNAME             = 5
+      NO_SYSTEMTYPE             = 6
+      NO_TADIR_TYPE             = 7
+      RESERVED_NAME             = 8
+      TADIR_ENQUEUE_FAILED      = 9
+      DEVCLASS_NOT_FOUND        = 10
+      TADIR_NOT_EXIST           = 11
+      OBJECT_EXISTS             = 12
+      INTERNAL_ERROR            = 13
+      OBJECT_APPEND_ERROR       = 14
+      TADIR_MODIFY_ERROR        = 15
+      OBJECT_LOCKED             = 16
+      NO_OBJECT_AUTHORITY       = 17
+      OTHERS                    = 18.
+
+  IF SY-SUBRC NE 0.
+    MESSAGE 'Error while creating TADIR entry' TYPE 'S'.
+  ENDIF.                               " IF SY-SUBRC NE 0
+
+* Upload text elements to the new program,
+* Using translation they can be maintained in different languages
+  MOVE 1 TO W_INDEX.
+
+  DESCRIBE TABLE T_DATA2 LINES W_CNT2.
+
+  LOOP AT T_DATA2 INTO FS_DATA2.
+    W_CNT3 = W_CNT3 + 1.
+    CLEAR: FS_DOC,FS_STR.
+
+    IF W_INDEX = 1.
+      MOVE FS_DATA2+3(1) TO W_CHAR.
+    ENDIF.                             " IF W_INDEX = 1
+* Check if language is same
+    IF W_CHAR = FS_DATA2+3(1).
+      MOVE FS_DATA2+6 TO FS_DOC.
+      SPLIT FS_DOC AT '*%'
+               INTO FS_TXT-ID
+                    FS_TXT-KEY
+                    FS_TXT-ENTRY
+                    W_LEN.
+      MOVE W_LEN TO FS_TXT-LENGTH.
+      APPEND FS_TXT TO T_TXT.
+      CLEAR  FS_TXT.
+      W_INDEX = W_INDEX + 1.
+* If it comes to last line of the internal table
+      IF W_CNT3 = W_CNT2.
+* Upload text elements to the new program
+        INSERT TEXTPOOL P_PROG FROM T_TXT
+                               LANGUAGE W_CHAR.
+        CLEAR: W_CHAR,
+               FS_DOC,
+               FS_TXT,
+               T_TXT[].
+      ENDIF.                           " IF W_CNT3 = W_CNT2
+* If language changes, insert text elements up to here
+* into the given language
+    ELSE.
+* Upload text elements to the new program
+      INSERT TEXTPOOL P_PROG FROM T_TXT
+                             LANGUAGE W_CHAR.
+      CLEAR: W_CHAR,
+             FS_DOC,
+             T_TXT,
+             T_TXT[].
+* Append 1st line of new language here
+      MOVE FS_DATA2+6 TO FS_DOC.
+      SPLIT FS_DOC AT '*%'
+               INTO FS_TXT-ID
+                    FS_TXT-KEY
+                    FS_TXT-ENTRY
+                    W_LEN.
+      MOVE W_LEN TO FS_TXT-LENGTH.
+      APPEND FS_TXT TO T_TXT.
+      CLEAR  FS_TXT.
+      MOVE 1 TO W_INDEX.
+    ENDIF.                             " IF W_CHAR =...
+  ENDLOOP.                             " LOOP AT T_DATA2
+
+  LOOP AT T_DATA INTO FS_DATA.
+    CLEAR: FS_DOC,
+           FS_STR.
+
+    CASE FS_DATA+0(1).
+* Documentation
+      WHEN 'D'.
+        MOVE FS_DATA+1 TO FS_DOC.
+
+        IF FS_DOC+0(4) = 'LINE'.
+          MOVE FS_DOC+5 TO FS_STR.
+          SPLIT FS_STR AT ';'
+                     INTO FS_TLINE-TDFORMAT
+                          FS_TLINE-TDLINE.
+          APPEND FS_TLINE TO T_TLINE.
+          CLEAR: FS_TLINE,
+                 FS_STR.
+
+        ELSEIF FS_DOC+0(4)    = 'HEAD'.
+          MOVE FS_DOC+5 TO FS_STR.
+          SPLIT FS_STR AT ';'
+                     INTO  FS_THEAD-TDOBJECT   FS_THEAD-TDNAME
+                           FS_THEAD-TDID       FS_THEAD-TDSPRAS
+                           FS_THEAD-TDTITLE    FS_THEAD-TDFORM
+                           FS_THEAD-TDSTYLE    FS_THEAD-TDVERSION
+                           FS_THEAD-TDFUSER    FS_THEAD-TDFRELES
+                           FS_THEAD-TDFDATE    FS_THEAD-TDFTIME
+                           FS_THEAD-TDLUSER    FS_THEAD-TDLRELES
+                           FS_THEAD-TDLDATE    FS_THEAD-TDLTIME
+                           FS_THEAD-TDLINESIZE FS_THEAD-TDTXTLINES
+                           FS_THEAD-TDHYPHENAT FS_THEAD-TDOSPRAS
+                           FS_THEAD-TDTRANSTAT FS_THEAD-TDMACODE1
+                           FS_THEAD-TDMACODE2  FS_THEAD-TDREFOBJ
+                           FS_THEAD-TDREFNAME  FS_THEAD-TDREFID
+                           FS_THEAD-TDTEXTTYPE FS_THEAD-TDCOMPRESS
+                           FS_THEAD-MANDT      FS_THEAD-TDOCLASS
+                           FS_THEAD-LOGSYS.
+
+          CLEAR FS_THEAD-TDNAME.
+          MOVE W_PROG3 TO FS_THEAD-TDNAME.
+          CLEAR FS_STR.
+
+        ELSEIF FS_DOC+0(8) = 'DOKSTATE'.
+          SHIFT FS_DOC BY 8 PLACES.
+          MOVE FS_DOC TO W_STATE.
+
+        ELSEIF FS_DOC+0(3) = 'TYP'.
+          SHIFT FS_DOC BY 3 PLACES.
+          MOVE FS_DOC TO W_TYP.
+
+        ELSEIF FS_DOC+0(10) = 'DOKVERSION'.
+          SHIFT FS_DOC BY 10 PLACES.
+          MOVE FS_DOC TO W_VERSION.
+
+* Update
+          CALL FUNCTION 'DOCU_UPDATE'
+            EXPORTING
+              HEAD    = FS_THEAD
+              STATE   = W_STATE
+              TYP     = W_TYP
+              VERSION = W_VERSION
+            TABLES
+              LINE    = T_TLINE.
+
+          CLEAR: FS_TLINE,
+                 T_TLINE[],
+                 FS_THEAD,
+                 W_STATE,
+                 W_TYP,
+                 W_VERSION.
+        ENDIF.                         " IF FS_DOC+0(4) = 'LINE'
+
+* PF-Status
+      WHEN 'P'.
+        MOVE FS_DATA+1 TO FS_DOC.
+
+        IF FS_DOC+0(3) = 'LAN'.
+          MOVE FS_DOC+3 TO W_LANG.
+
+        ELSEIF FS_DOC+0(3) = 'STA'.
+          PERFORM POPULATE_PF_TABS TABLES T_STA
+                                    USING 'FS_STA'
+                                          FS_STA
+                                          C_STAT.
+
+        ELSEIF FS_DOC+0(3) = 'FUN'.
+          PERFORM POPULATE_PF_TABS TABLES T_FUN
+                                    USING 'FS_FUN'
+                                          FS_FUN
+                                          C_FUNT.
+
+        ELSEIF FS_DOC+0(3) = 'MEN'.
+          PERFORM POPULATE_PF_TABS TABLES T_MEN
+                                    USING 'FS_MEN'
+                                          FS_MEN
+                                          C_MEN.
+
+        ELSEIF FS_DOC+0(3) = 'MTX'.
+          PERFORM POPULATE_PF_TABS TABLES T_MTX
+                                    USING 'FS_MTX'
+                                          FS_MTX
+                                          C_MNLT.
+
+        ELSEIF FS_DOC+0(3) = 'ACT'.
+          PERFORM POPULATE_PF_TABS TABLES T_ACT
+                                    USING 'FS_ACT'
+                                          FS_ACT
+                                          C_ACT.
+
+        ELSEIF FS_DOC+0(3) = 'BUT'.
+          PERFORM POPULATE_PF_TABS TABLES T_BUT
+                                    USING 'FS_BUT'
+                                          FS_BUT
+                                          C_BUT.
+
+        ELSEIF FS_DOC+0(3) = 'PFK'.
+          PERFORM POPULATE_PF_TABS TABLES T_PFK
+                                    USING 'FS_PFK'
+                                          FS_PFK
+                                          C_PFK.
+
+        ELSEIF FS_DOC+0(3) = 'SET'.
+          PERFORM POPULATE_PF_TABS TABLES T_SET
+                                    USING 'FS_SET'
+                                          FS_SET
+                                          C_STAF.
+
+        ELSEIF FS_DOC+0(3) = 'ATR'.
+          PERFORM POPULATE_PF_TABS TABLES T_ATRT
+                                    USING 'FS_ATRT'
+                                          FS_ATRT
+                                          C_ATRT.
+
+        ELSEIF FS_DOC+0(3) = 'TIT'.
+          PERFORM POPULATE_PF_TABS TABLES T_TIT
+                                    USING 'FS_TIT'
+                                          FS_TIT
+                                          C_TITT.
+
+        ELSEIF FS_DOC+0(3) = 'BIV'.
+          PERFORM POPULATE_PF_TABS TABLES T_BIV
+                                    USING 'FS_BIV'
+                                          FS_BIV
+                                          C_BUTS.
+
+        ELSEIF FS_DOC+0(3) = 'ADM'.
+          MOVE FS_DOC+4 TO FS_STR.
+          SPLIT FS_STR AT ';'
+                     INTO FS_ADM-ACTCODE
+                          FS_ADM-MENCODE
+                          FS_ADM-PFKCODE
+                          FS_ADM-DEFAULTACT
+                          FS_ADM-DEFAULTPFK
+                          FS_ADM-MOD_LANGU.
+
+* Upload PF-STATUS to the new program
+          CALL FUNCTION 'RS_CUA_INTERNAL_WRITE'
+            EXPORTING
+              PROGRAM   = P_PROG
+              LANGUAGE  = W_LANG
+              TR_KEY    = FS_TRKEY
+              ADM       = FS_ADM
+            TABLES
+              STA       = T_STA
+              FUN       = T_FUN
+              MEN       = T_MEN
+              MTX       = T_MTX
+              ACT       = T_ACT
+              BUT       = T_BUT
+              PFK       = T_PFK
+              SET       = T_SET
+              DOC       = T_ATRT
+              TIT       = T_TIT
+              BIV       = T_BIV
+            EXCEPTIONS
+              NOT_FOUND = 1
+              OTHERS    = 2.
+
+          IF SY-SUBRC NE 0.
+            MESSAGE 'Error during PF-STATUS upload' TYPE 'S'.
+          ENDIF.                       " IF SY-SUBRC NE 0
+          CLEAR: W_LANG, FS_ADM,
+                 FS_STA, T_STA[],
+                 FS_FUN, T_FUN[],
+                 FS_MEN, T_MEN[],
+                 FS_MTX, T_MTX[],
+                 FS_ACT, T_ACT[],
+                 FS_BUT, T_BUT[],
+                 FS_PFK, T_PFK[],
+                 FS_SET, T_SET[],
+                 FS_ATRT,T_ATRT[],
+                 FS_TIT, T_TIT[],
+                 FS_BIV, T_BIV[].
+        ENDIF.                         " IF FS_DOC+0(3) = 'LAN'
+    ENDCASE.                           " CASE FS_DATA+0(1)
+  ENDLOOP.                             " LOOP AT T_DATA...
+
+  SYNTAX-CHECK FOR T_CODE MESSAGE W_MESS
+                             LINE W_LIN
+                             WORD W_WRD
+                          PROGRAM P_PROG.
+  IF SY-SUBRC NE 0.
+    CONCATENATE 'Program '
+                 P_PROG
+                ' is syntactically incorrect,'
+                'correct it before executing'
+           INTO W_STR
+   SEPARATED BY SPACE.
+
+    MESSAGE W_STR TYPE 'S'.
+    CLEAR W_STR.
+    STOP.
+  ELSE.
+    CONCATENATE P_PROG
+                ' created successfully'
+           INTO W_STR
+   SEPARATED BY SPACE.
+
+    MESSAGE W_STR TYPE 'S'.
+    CLEAR W_STR.
+  ENDIF.                               " IF SY-SUBRC NE 0
+ENDFORM.                               " CREATE_PROG
+
+*&---------------------------------------------------------------------*
+*&      Form  download_pf_tabs                                         *
+*&---------------------------------------------------------------------*
+* This subroutine downloads PF Tabs                                    *
+*----------------------------------------------------------------------*
+*  PT_TAB                                                              *
+*  PC_TABNAME ==> Text                                                 *
+*  PC_WA      ==> Text                                                 *
+*  PC_TXT     ==> Text                                                 *
+*  PC_CONS    ==> Text                                                 *
+*----------------------------------------------------------------------*
+FORM DOWNLOAD_PF_TABS TABLES PT_TAB
+                       USING PC_TABNAME
+                             PC_WA
+                             PC_TXT
+                             PC_CONS.
+  CLEAR: FS_DD03L,T_DD03L[].
+
+  SELECT FIELDNAME
+    FROM DD03L
+    INTO TABLE T_DD03L
+   WHERE TABNAME = PC_TABNAME.
+
+  IF SY-SUBRC EQ 0.
+    CLEAR: W_CNT3.
+    LOOP AT T_DD03L INTO FS_DD03L WHERE FIELDNAME = '.INCLUDE'.
+      DELETE TABLE T_DD03L FROM FS_DD03L.
+    ENDLOOP.                           " LOOP AT T_DD03L INTO...
+    DESCRIBE TABLE T_DD03L LINES W_CNT3.
+  ENDIF.                               " IF SY-SUBRC EQ 0
+
+  LOOP AT PT_TAB INTO PC_WA.
+    CLEAR: W_INDEX,
+           W_FIELD,
+           FS_PFS.
+
+    LOOP AT T_DD03L INTO FS_DD03L.
+      MOVE SY-TABIX TO W_INDEX.
+      CONCATENATE PC_TXT FS_DD03L-FIELDNAME INTO W_FIELD.
+      CONDENSE W_FIELD NO-GAPS.
+      ASSIGN (W_FIELD) TO <FS1>.
+      IF <FS1> IS ASSIGNED.
+        IF W_INDEX = 1.
+          CONCATENATE PC_CONS
+                      FS_DD03L-FIELDNAME '*' <FS1>
+                      INTO FS_PFS.
+        ELSE.
+          CONCATENATE FS_PFS
+                      ';'
+                      FS_DD03L-FIELDNAME '*' <FS1>
+                      INTO FS_PFS.
+        ENDIF.                         " IF W_INDEX = 1
+      ENDIF.                           " IF <FS1> IS ASSIGNED
+    ENDLOOP.                           " LOOP AT T_DD03L INTO...
+    APPEND FS_PFS TO T_PFS.
+  ENDLOOP.                             " LOOP AT P_TAB INTO P_WA
+ENDFORM.                               " DOWNLOAD_PF_TABS
+
+*&---------------------------------------------------------------------*
+*&      Form  POPULATE_PF_TABS                                         *
+*&---------------------------------------------------------------------*
+* This subroutine populates PF Tabs                                    *
+*----------------------------------------------------------------------*
+* PT_TAB                                                               *
+* PC_WANAME  ==>  Text                                                 *
+* PC_WA      ==>  Text                                                 *
+* PC_STRUCT  ==>  Text                                                 *
+*----------------------------------------------------------------------*
+FORM POPULATE_PF_TABS TABLES PT_TAB
+                       USING PC_WANAME
+                             PC_WA
+                             PC_STRUCT.
+
+  UNASSIGN: <FS1>.
+
+  FIELD-SYMBOLS: <FS_WA>.
+
+  CLEAR: W_STR,
+         W_CNT2,
+         FS_STR.
+
+  SELECT FIELDNAME
+    FROM DD03L
+    INTO TABLE T_DD03L
+   WHERE TABNAME = PC_STRUCT.
+
+  IF SY-SUBRC EQ 0.
+    SORT T_DD03L.
+
+    MOVE FS_DOC+3 TO FS_STR.
+    ASSIGN (PC_WANAME) TO <FS_WA>.
+
+    WHILE NOT FS_STR IS INITIAL.
+      IF FS_STR CS C_SEP.
+        MOVE SY-FDPOS TO W_CNT2.
+        MOVE FS_STR+0(W_CNT2) TO W_STR.
+        W_CNT2 = W_CNT2 + 1.
+        SHIFT FS_STR BY W_CNT2 PLACES LEFT.
+
+        IF W_STR CS C_SEP2.
+          CLEAR: W_CNT2.
+          MOVE SY-FDPOS TO W_CNT2.
+          MOVE W_STR+0(W_CNT2) TO W_WRD.
+          W_CNT2 = W_CNT2 + 1.
+          MOVE W_STR+W_CNT2 TO W_VAL.
+
+          READ TABLE T_DD03L INTO FS_DD03L WITH KEY
+                        FIELDNAME = W_WRD BINARY SEARCH.
+          IF SY-SUBRC EQ 0.
+            IF <FS_WA> IS ASSIGNED.
+              ASSIGN COMPONENT FS_DD03L-FIELDNAME OF
+                       STRUCTURE <FS_WA> TO <FS1>.
+              IF <FS1> IS ASSIGNED.
+                MOVE W_VAL TO <FS1>.
+                UNASSIGN <FS1>.
+              ENDIF.                   " IF <FS1> IS ASSIGNED
+            ENDIF.                     " IF <FS_WA> IS ASSIGNED
+            CLEAR: W_CNT2,
+                   W_STR,
+                   W_WRD,
+                   W_VAL,
+                   FS_DD03L.
+          ENDIF.                       " IF SY-SUBRC EQ 0
+        ENDIF.                         " IF W_STR CS C_SEP2
+      ELSE.
+        IF FS_STR CS C_SEP2.
+          CLEAR: W_CNT2.
+          MOVE SY-FDPOS TO W_CNT2.
+          MOVE FS_STR+0(W_CNT2) TO W_WRD.
+          W_CNT2 = W_CNT2 + 1.
+          MOVE FS_STR+W_CNT2 TO W_VAL.
+
+          READ TABLE T_DD03L INTO FS_DD03L WITH KEY
+                        FIELDNAME = W_WRD BINARY SEARCH.
+          IF SY-SUBRC EQ 0.
+            IF <FS_WA> IS ASSIGNED.
+              ASSIGN COMPONENT FS_DD03L-FIELDNAME OF
+                       STRUCTURE <FS_WA> TO <FS1>.
+              IF <FS1> IS ASSIGNED.
+                MOVE W_VAL TO <FS1>.
+                UNASSIGN <FS1>.
+              ENDIF.                   " IF <FS1> IS ASSIGNED
+            ENDIF.                     " IF <FS_WA> IS ASSIGNED
+            CLEAR: W_CNT2,
+                 W_STR,
+                 W_WRD,
+                 W_VAL,
+                 FS_DD03L,
+                 FS_STR.
+          ENDIF.                       " IF SY-SUBRC EQ 0
+        ENDIF.                         " IF FS_STR CS C_SEP2
+      ENDIF.                           " IF FS_STR CS C_SEP
+    ENDWHILE.                          " WHILE NOT FS_STR IS INITIAL
+
+    APPEND PC_WA TO PT_TAB.
+    CLEAR  PC_WA.
+  ENDIF.                               " IF SY-SUBRC EQ 0
+
+  UNASSIGN: <FS1>,
+            <FS_WA>.
+ENDFORM.                               " POPULATE_PF_TABS

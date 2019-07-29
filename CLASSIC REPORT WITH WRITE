@@ -1,0 +1,243 @@
+*&---------------------------------------------------------------------*
+*& Report ZCLASSICREPORT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZCLASSICREPORT LINE-COUNT 100(5).
+
+TABLES: YCL_CH03_KNVK."declare strutures used.Skip declaring data statement.
+
+DATA: FLAG TYPE STRING,"PREVENT DISPLAY END-OF-LIST AT LAST PAGE.
+      TOTAL  TYPE VBRK-NETWR,
+      VBELN1 TYPE VBRP-VBELN, "DECLARE FIELD LOADED
+      CUSTOM TYPE YCL_CH03_KNVK-KUNNR.
+DATA: BEGIN OF I_STRUC,
+      AUBEL TYPE VBRP-AUBEL,
+      VBELN TYPE VBRP-VBELN,
+      POSNR TYPE VBRP-POSNR,
+      FKIMG TYPE VBRP-FKIMG,
+      GEWEI TYPE VBRP-GEWEI,
+      MATNR TYPE VBRP-MATNR,
+      ARKTX TYPE VBRP-ARKTX,
+      END OF I_STRUC.
+DATA:ITAB LIKE STANDARD TABLE OF I_STRUC.
+
+DATA: BEGIN OF I_STRUC2,
+      MATKL TYPE MARA-MATKL,"MATERIAL GROUP
+      MTART TYPE MARA-MTART,"MATERIAL TYPE
+      MBRSH TYPE MARA-MBRSH,"MATERIAL DESCRIPTION
+      END OF I_STRUC2.
+  DATA: ITAB2 LIKE STANDARD TABLE OF I_STRUC2.
+  DATA: FNAME TYPE STRING.
+* Practice with build-in method *
+***********************************
+DATA: STR_TAB TYPE FILETABLE WITH HEADER LINE, " return selected file
+      HTML_TAB TYPE STANDARD TABLE OF W3HTML, "HTML formatted list
+      CNT TYPE I, " no of files selected in file open dialog
+      ANS(1) TYPE C, " return value of popup dialogue box
+      CANCEL(1) TYPE C. " cancel download
+
+********************************
+SELECT-OPTIONS: Customer For YCL_CH03_KNVK-KUNNR No INTERVALS.
+
+*&---------------------------------------------------------------------*
+*& Define TOP-OF-PAGE Events for creating Header List Report
+*&---------------------------------------------------------------------*
+
+TOP-OF-PAGE.
+WRITE:/5 'DATE ON:',SY-DATUM.
+WRITE:/5'PAGE NO:', SY-PAGNO.
+  WRITE:/5(181) SY-ULINE.
+* SET HEADER WITH LINES as Column names
+
+ WRITE:/5 SY-VLINE NO-GAP,'CUSTOMER NUMBER' NO-GAP,15 SY-VLINE NO-GAP, 'CUSTOMER NAME' NO-GAP,50  SY-VLINE NO-GAP, 'Street and House Number' NO-GAP, 85 SY-VLINE NO-GAP, 'District' NO-GAP,
+           120 SY-VLINE NO-GAP, 'Net Value' NO-GAP, 150 SY-VLINE NO-GAP, 'Sales Document' NO-GAP, 165 SY-VLINE NO-GAP, 'Material Number' NO-GAP, 185 SY-VLINE NO-GAP.
+ WRITE:/5(181) SY-ULINE.
+
+*&---------------------------------------------------------------------*
+*& Define END-OF-PAGE Events for creating Footer List Report
+*&---------------------------------------------------------------------*
+ END-OF-PAGE.
+ DATA NXT_PAGE TYPE N.
+ NXT_PAGE = SY-PAGNO + 1.
+ IF FLAG = ''.
+ WRITE:/5 'NEXT PAGE:',NXT_PAGE.
+ ENDIF.
+
+*&---------------------------------------------------------------------*
+*& Define START-OF-SELECTION Events for selecting the relevant data
+*&---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+*  Set PF-STATUS 'STAT1'. " For user command if required
+
+  FORMAT INVERSE ON COLOR COL_GROUP. "FORMAT DATA
+
+  SELECT * FROM YCL_CH03_KNVK
+  WHERE KUNNR in Customer.
+
+  SET LEFT SCROLL-BOUNDARY COLUMN 15. "Set frezze at colunm 15th.
+
+  WRITE:/5 SY-VLINE NO-GAP,YCL_CH03_KNVK-KUNNR INVERSE ON COLOR = 3 NO-GAP,15 SY-VLINE NO-GAP, YCL_CH03_KNVK-NAME1 NO-GAP,50  SY-VLINE NO-GAP, YCL_CH03_KNVK-STRAS NO-GAP, 85 SY-VLINE NO-GAP, YCL_CH03_KNVK-ORT02 NO-GAP,
+           120 SY-VLINE NO-GAP, YCL_CH03_KNVK-NETWR NO-GAP, 150 SY-VLINE NO-GAP, YCL_CH03_KNVK-VBELN NO-GAP, 165 SY-VLINE NO-GAP, YCL_CH03_KNVK-MATNR NO-GAP, 185 SY-VLINE NO-GAP.
+
+  WRITE:/5(181) SY-ULINE."INSERT HORIZONAL LINES.
+
+TOTAL = TOTAL + YCL_CH03_KNVK-NETWR."FORMAL FOR TOTAL.
+ENDSELECT.
+FLAG = 'X'. "Stop last page footer
+END-OF-SELECTION.
+WRITE:/115 'TOTAL:',TOTAL UNDER YCL_CH03_KNVK-NETWR. "INSERT TOTAL LINES.
+
+*&---------------------------------------------------------------------*
+*& Define AT LINE-SELECTION Events to save data clicking on
+*&---------------------------------------------------------------------*
+
+AT LINE-SELECTION.
+
+  IF SY-LSIND > 2."PRVENT ERRP EXCEED 2 LIST
+    SY-LSIND = 0.
+  ELSE.
+    CASE SY-LSIND.
+      WHEN 1."START OF SECONDARY LIST I
+    VBELN1 = SY-LISEL+150(10)."LOAD FIELD VALUE FROM PRIMARY LIST
+    CUSTOM = SY-LISEL+5(8).
+  SELECT * FROM VBRP INTO CORRESPONDING FIELDS OF TABLE ITAB WHERE AUBEL = VBELN1.
+  LOOP AT ITAB INTO I_STRUC.
+    WRITE:/5 SY-VLINE NO-GAP,I_STRUC-VBELN INVERSE ON COLOR = 3 NO-GAP,35  SY-VLINE NO-GAP, I_STRUC-POSNR NO-GAP, 50 SY-VLINE NO-GAP, I_STRUC-FKIMG NO-GAP,
+           65 SY-VLINE NO-GAP, I_STRUC-GEWEI NO-GAP, 80 SY-VLINE NO-GAP, I_STRUC-MATNR NO-GAP, 95 SY-VLINE NO-GAP, I_STRUC-ARKTX NO-GAP,150 SY-VLINE NO-GAP.
+    WRITE:/5(146) SY-ULINE. "GET ONE MORE COLUNM FOR FILL ALL VERTICAL BODER
+    HIDE I_STRUC-MATNR."GET VARIANT FOR SECONDARY LIST II - saving data from clicking
+  ENDLOOP.
+**********************************************************
+      WHEN 2. "START OF SECONDARY LIST II
+      GET CURSOR FIELD FNAME. "CHECK FOR CURSOR ON FIELD
+      IF FNAME <> 'I_STRUC-MATNR'.
+        SY-LSIND = SY-LSIND - 1.
+        EXIT.
+        ENDIF.
+        SELECT * FROM MARA INTO CORRESPONDING FIELDS OF TABLE ITAB2 WHERE MATNR = I_STRUC-MATNR.
+         IF SY-DBCNT = 0.
+           MESSAGE S021(YCL_CH07_MCLASS01) WITH 'Secondary List II' DISPLAY LIKE 'W'.
+           SY-LSIND = 1.
+           EXIT.
+           ENDIF.
+
+         LOOP AT ITAB2 INTO I_STRUC2.
+           WRITE: /5 SY-VLINE NO-GAP,I_STRUC2-MATKL INVERSE ON COLOR = 7 NO-GAP,35  SY-VLINE NO-GAP, I_STRUC2-MTART NO-GAP, 50 SY-VLINE NO-GAP, I_STRUC2-MBRSH NO-GAP,70 SY-VLINE NO-GAP.
+           WRITE:/5(66) SY-ULINE.
+          ENDLOOP.
+          ENDCASE.
+  ENDIF.
+*&---------------------------------------------------------------------*
+*& Define AT USER-COMMAND Events to expand functions on reports
+*&---------------------------------------------------------------------*
+AT USER-COMMAND.
+  CASE SY-UCOMM. " Using with GUI STATUS
+WHEN 'DOWNH'.
+SY-LSIND = SY-LSIND - 1.
+SELECTION-SCREEN BEGIN OF SCREEN 2000.
+PARAMETERS FILE TYPE STRING.
+SELECTION-SCREEN END OF SCREEN 2000.
+CALL SELECTION-SCREEN 2000 STARTING AT 3 2 ENDING AT 90 7.
+*********************************************************
+IF CANCEL = 'C'. " cancel download
+CANCEL = ' '.
+ELSE.
+ANS = ' '.
+IF CL_GUI_FRONTEND_SERVICES=>FILE_EXIST( FILE = FILE ) = 'X'.
+CALL FUNCTION 'POPUP_TO_CONFIRM'
+EXPORTING
+TEXT_QUESTION = 'Confirm Overwriting'(001)
+TEXT_BUTTON_1 = 'Yes'(002)
+TEXT_BUTTON_2 = 'No'(003)
+DEFAULT_BUTTON = '2'
+DISPLAY_CANCEL_BUTTON = ' '
+START_COLUMN = 25
+START_ROW = 6
+IMPORTING
+ANSWER = ANS
+.
+ENDIF.
+
+********************************************************
+IF ANS <> '2'.
+CALL FUNCTION 'WWW_LIST_TO_HTML'
+EXPORTING
+LIST_INDEX = 1
+TABLES
+HTML = HTML_TAB[].
+CALL METHOD CL_GUI_FRONTEND_SERVICES=>GUI_DOWNLOAD
+EXPORTING
+FILENAME = FILE "'D:\TMP\EEE.HTM'
+FILETYPE = 'BIN'
+WRITE_LF = 'X'
+* CONFIRM_OVERWRITE = 'X'
+CHANGING
+  DATA_TAB = ITAB[]
+.
+IF SY-SUBRC <> 0.
+MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+ENDIF.
+ELSE.
+MESSAGE S038(YCL_CH07_MCLASS01)
+WITH FILE. " Overwriting Existing File:&1 Cancelled
+ENDIF.
+ENDIF.
+WHEN 'RETURN'.
+  SY-LSIND = SY-LSIND - 1.
+WHEN 'DETAL'.
+  SY-LSIND = SY-LSIND + 1.
+When 'EXIT'.
+  LEAVE SCREEN.
+ENDCASE.
+
+*******************************************************
+AT SELECTION-SCREEN ON EXIT-COMMAND.
+CANCEL = 'C'. " for cancel download
+*******************************************************
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR FILE.
+CALL METHOD CL_GUI_FRONTEND_SERVICES=>FILE_OPEN_DIALOG
+EXPORTING
+* WINDOW_TITLE =
+MULTISELECTION = ' '
+CHANGING
+FILE_TABLE = STR_TAB[]
+RC = CNT
+EXCEPTIONS
+FILE_OPEN_DIALOG_FAILED = 1
+CNTL_ERROR = 2
+ERROR_NO_GUI = 3
+NOT_SUPPORTED_BY_GUI = 4
+others = 5
+.
+IF SY-SUBRC <> 0.
+MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+ELSE.
+READ TABLE STR_TAB INDEX 1.
+IF STR_TAB IS NOT INITIAL.
+FILE = STR_TAB.
+ENDIF.
+ENDIF.
+*&------------------------------------------------------------------------------------*
+*& Define TOP-OF-PAGE DURING LINE-SELECTION Events to bulid Secondary List Header
+*&------------------------------------------------------------------------------------*
+TOP-OF-PAGE DURING LINE-SELECTION. " event for secondary list headers
+CASE SY-LSIND.
+  WHEN 1.
+WRITE:/5 'SALE DOCUMENT NO:', VBELN1, '|','CUSTOMER:', CUSTOM. "VALUE LOAD FROM PRIMARY LIST
+SKIP 1.
+WRITE:/5(146) SY-ULINE.
+WRITE:/5 SY-VLINE NO-GAP,'BILLING NO.' INVERSE ON COLOR = 3 NO-GAP,35  SY-VLINE NO-GAP, 'ITEM NO' NO-GAP, 50 SY-VLINE NO-GAP, 'BILLED QUAN' NO-GAP,
+           65 SY-VLINE NO-GAP, 'UNIT' NO-GAP, 80 SY-VLINE NO-GAP, 'MATERIAL' NO-GAP, 95 SY-VLINE NO-GAP, 'DESCRIPTION' NO-GAP, 150 SY-VLINE.
+WRITE:/5(146) SY-ULINE.
+  WHEN 2.
+WRITE:/5 'MATERIAL NO:', I_STRUC-MATNR.
+SKIP 1.
+WRITE:/5(66) SY-ULINE.
+WRITE:/5 SY-VLINE NO-GAP,'MATERIAL GROUP' INVERSE ON COLOR = 7 NO-GAP,35  SY-VLINE NO-GAP, 'MATERIAL TYPE' NO-GAP, 50 SY-VLINE NO-GAP, 'INDUSTRY SECTOR' NO-GAP,70 SY-VLINE NO-GAP.
+WRITE:/5(66) SY-ULINE.
+ENDCASE.
+*******************************************************************

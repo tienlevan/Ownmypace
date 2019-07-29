@@ -1,0 +1,410 @@
+*&---------------------------------------------------------------------*
+*& Report ZDEMO_SELECTIONSCREEN_COMPLEX
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZDEMO_SELECTIONSCREEN_COMPLEX.
+*TYPE POOLS DECLARATIONS FOR VALUE REQUEST MANAGER AND ICONS
+TYPE-POOLS : VRM,
+             ICON.
+*SELECTION SCREEN FIELDS
+TABLES : SSCRFIELDS.
+*GLOBAL DECLARATIONS
+DATA : FLAG TYPE C,
+      TABLENAME(10),
+      MMTABLE LIKE DD02L-TABNAME,
+      SDTABLE LIKE DD02L-TABNAME,
+      HRTABLE LIKE DD02L-TABNAME.
+*DECLARATIONS FOR SELECTION SCREEN STATUS
+DATA IT_UCOMM TYPE TABLE OF SY-UCOMM.
+***********SELECTION-SCREENS**********************
+SELECTION-SCREEN BEGIN OF BLOCK BLK1 WITH FRAME.
+*FOR DYNAMIC DISPLAY OF MODULES
+PARAMETERS :  PA RADIOBUTTON GROUP RAD USER-COMMAND COM MODIF ID MOD,
+              PB RADIOBUTTON GROUP RAD MODIF ID RAD,
+              PC RADIOBUTTON GROUP RAD MODIF ID CAD.
+SELECTION-SCREEN SKIP.
+**TO INCLUDE DYNAMIC ICONS
+SELECTION-SCREEN COMMENT 2(6) TEXT_001.
+*DYNAMIC LIST BOX BASED ON USER SELECTIONS
+PARAMETERS ONE AS LISTBOX VISIBLE LENGTH 20  MODIF ID MOD.
+PARAMETERS TWO AS LISTBOX VISIBLE LENGTH 20   MODIF ID RAD.
+PARAMETERS THREE AS LISTBOX VISIBLE LENGTH 20 MODIF ID CAD.
+SELECTION-SCREEN END OF BLOCK BLK1.
+*DISPLAY DYNAMIC PUSHBUTTON ON APP TOOLBAR ON USER CLICKS
+SELECTION-SCREEN: FUNCTION KEY 1,
+                  FUNCTION KEY 2,
+                  FUNCTION KEY 3.
+*Add Picture
+* START OF DO NOT CHANGE***********************************
+DATA: DOCKING TYPE REF TO CL_GUI_DOCKING_CONTAINER,
+      PICTURE_CONTROL_1 TYPE REF TO CL_GUI_PICTURE,
+      URL(256) TYPE C .
+DATA: QUERY_TABLE LIKE W3QUERY OCCURS 1 WITH HEADER LINE,
+      HTML_TABLE LIKE W3HTML OCCURS 1,
+      RETURN_CODE LIKE  W3PARAM-RET_CODE,
+      CONTENT_TYPE LIKE  W3PARAM-CONT_TYPE,
+      CONTENT_LENGTH LIKE  W3PARAM-CONT_LEN,
+      PIC_DATA LIKE W3MIME OCCURS 0,
+      PIC_SIZE TYPE I.
+* END OF DO NOT CHANGE*************************************
+**EVENT ON SELECTION SCREEN FOR OUTPUT DISPLAY
+AT SELECTION-SCREEN OUTPUT.
+*For PIC display
+PERFORM SHOW_PIC.
+*CLICK OF FIRST RADIO BUTTON
+  IF PA = 'X'.
+    SSCRFIELDS-FUNCTXT_01 = 'Materials Management'.
+    WRITE ICON_PLANT AS ICON TO TEXT_001.
+*CODE TO GET DYNAMICS BASED ON THE SELECTED RADIO
+    LOOP AT SCREEN.
+      IF SCREEN-GROUP1 = 'MOD'.
+        SCREEN-INTENSIFIED = '1'.
+        SCREEN-ACTIVE = 1.
+        SCREEN-DISPLAY_3D = '1'.
+        MODIFY SCREEN.
+      ENDIF.
+      IF SCREEN-GROUP1 = 'RAD'.
+        SCREEN-INTENSIFIED = '0'.
+        SCREEN-ACTIVE = 0.
+        SCREEN-DISPLAY_3D = '0'.
+        MODIFY SCREEN.
+      ENDIF.
+      IF SCREEN-GROUP1 = 'CAD'.
+        SCREEN-INTENSIFIED = '0'.
+        SCREEN-ACTIVE = 0.
+        SCREEN-DISPLAY_3D = '0'.
+        MODIFY SCREEN.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+*CLICK OF SECOND RADIO
+  IF PB = 'X'.
+    SSCRFIELDS-FUNCTXT_02 = 'Sales And Distribution'.
+    WRITE ICON_WS_SHIP AS ICON TO TEXT_001.
+    LOOP AT SCREEN.
+      IF SCREEN-GROUP1 = 'RAD'.
+        SCREEN-INTENSIFIED = '1'.
+        SCREEN-ACTIVE = 1.
+        SCREEN-DISPLAY_3D = '1'.
+        MODIFY SCREEN.
+      ENDIF.
+      IF SCREEN-GROUP1 = 'MOD'.
+        SCREEN-INTENSIFIED = '0'.
+        SCREEN-ACTIVE = 0.
+        SCREEN-DISPLAY_3D = '0'.
+        MODIFY SCREEN.
+      ENDIF.
+      IF SCREEN-GROUP1 = 'CAD'.
+        SCREEN-INTENSIFIED = '0'.
+        SCREEN-ACTIVE = 0.
+        SCREEN-DISPLAY_3D = '0'.
+        MODIFY SCREEN.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+*CLICK OF THIRD RADIO
+  IF PC = 'X'.
+    SSCRFIELDS-FUNCTXT_03 = 'Human Resources'.
+    WRITE ICON_NEW_EMPLOYEE AS ICON TO TEXT_001.
+    LOOP AT SCREEN.
+      IF SCREEN-GROUP1 = 'RAD'.
+        SCREEN-INTENSIFIED = '0'.
+        SCREEN-ACTIVE = 0.
+        SCREEN-DISPLAY_3D = '0'.
+        MODIFY SCREEN.
+      ENDIF.
+      IF SCREEN-GROUP1 = 'MOD'.
+        SCREEN-INTENSIFIED = '0'.
+        SCREEN-ACTIVE = 0.
+        SCREEN-DISPLAY_3D = '0'.
+        MODIFY SCREEN.
+      ENDIF.
+      IF SCREEN-GROUP1 = 'CAD'.
+        SCREEN-INTENSIFIED = '1'.
+        SCREEN-ACTIVE = 1.
+        SCREEN-DISPLAY_3D = '1'.
+        MODIFY SCREEN.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+*CUSTOMISING THE TOOLBARS OF THE SELECTION SCREEN
+*WITH F8 BUTTON DISABLED
+  APPEND :  'PRIN' TO IT_UCOMM,
+            'SPOS' TO IT_UCOMM,
+            'ONLI' TO IT_UCOMM.
+  CALL FUNCTION 'RS_SET_SELSCREEN_STATUS'
+    EXPORTING
+      P_STATUS  = SY-PFKEY
+    TABLES
+      P_EXCLUDE = IT_UCOMM.
+**EVENT ON THE SELECTION
+AT SELECTION-SCREEN.
+* LIST BOX ONE VALUES
+  CASE ONE.
+    WHEN '1'.
+      MMTABLE = 'MARC'.
+    WHEN '2'.
+      MMTABLE = 'MARA'.
+    WHEN '3'.
+      MMTABLE = 'MARD'.
+    WHEN '4'.
+      MMTABLE = 'MARM'.
+  ENDCASE.
+* LIST BOX TWO VALUES
+  CASE TWO.
+    WHEN '1'.
+      SDTABLE = 'VBAK'.
+    WHEN '2'.
+      SDTABLE = 'VBAP'.
+    WHEN '3'.
+      SDTABLE = 'VBUK'.
+    WHEN '4'.
+      SDTABLE = 'VBUP'.
+  ENDCASE.
+* LIST BOX THREE VALUES
+  CASE THREE.
+    WHEN '1'.
+      HRTABLE = 'PA0001'.
+    WHEN '2'.
+      HRTABLE = 'PA0006'.
+    WHEN '3'.
+      HRTABLE = 'PA0022'.
+    WHEN '4'.
+      HRTABLE = 'PA0008'.
+  ENDCASE.
+*VALUES FOR CLICK OF THE PUSHBUTTON ON APP TOOLBAR
+*AND ENABLING THE BUTTONS TO PERFORM F8
+  CASE SSCRFIELDS-UCOMM.
+    WHEN 'FC01'.
+      TABLENAME = MMTABLE.
+      SSCRFIELDS-UCOMM = 'ONLI'.
+    WHEN 'FC02'.
+      TABLENAME = SDTABLE.
+      SSCRFIELDS-UCOMM = 'ONLI'.
+    WHEN 'FC03'.
+      TABLENAME = HRTABLE.
+      SSCRFIELDS-UCOMM = 'ONLI'.
+  ENDCASE.
+*INITIALIZATION EVENT
+INITIALIZATION.
+*VALUES ASSIGNED TO DROPDOWNLISTS IN THE SUBROUTINES
+  PERFORM F4_VALUE_REQUEST_PA.
+  PERFORM F4_VALUE_REQUEST_PB.
+  PERFORM F4_VALUE_REQUEST_PC.
+*START OF SELECTION EVENT
+START-OF-SELECTION.
+*SUBROUTINE FOR OUTPUT
+  PERFORM OUTPUT.
+*&----------------------------------------------------------------*
+*&      Form  f4_value_request_PA
+*&----------------------------------------------------------------*
+*       text
+*-----------------------------------------------------------------*
+*SUBROUTINE TO PROVIDE DROPDOWN VALUES TO LIST1
+FORM F4_VALUE_REQUEST_PA.
+  DATA: L_NAME TYPE VRM_ID,
+        LI_LIST TYPE VRM_VALUES,
+        L_VALUE LIKE LINE OF LI_LIST.
+  L_VALUE-KEY = '1'.
+  L_VALUE-TEXT = 'Plant Data for Material'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_VALUE-KEY = '2'.
+  L_VALUE-TEXT = 'General Material Data'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_VALUE-KEY = '3'.
+  L_VALUE-TEXT = 'Storage Location Data for Material'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_VALUE-KEY = '4'.
+  L_VALUE-TEXT = 'Units of Measure for Material'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_NAME = 'ONE'.
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING
+      ID              = L_NAME
+      VALUES          = LI_LIST
+    EXCEPTIONS
+      ID_ILLEGAL_NAME = 1
+      OTHERS          = 2.
+  IF SY-SUBRC <> 0.
+    MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+            WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+ENDFORM. " f4_value_request_tabname
+*&----------------------------------------------------------------*
+*&      Form  f4_value_request_PB
+*&----------------------------------------------------------------*
+*       text
+*-----------------------------------------------------------------*
+*SUBROUTINE TO PROVIDE DROPDOWN VALUES TO LIST2
+FORM F4_VALUE_REQUEST_PB.
+  DATA: L_NAME TYPE VRM_ID,
+        LI_LIST TYPE VRM_VALUES,
+        L_VALUE LIKE LINE OF LI_LIST.
+  L_VALUE-KEY = '1'.
+  L_VALUE-TEXT = 'Sales Document: Header Data'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_VALUE-KEY = '2'.
+  L_VALUE-TEXT = 'Sales Document: Item Data'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_VALUE-KEY = '3'.
+  L_VALUE-TEXT = 'Sales Document:Header Status'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_VALUE-KEY = '4'.
+  L_VALUE-TEXT = 'Sales Document: Item Status'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_NAME = 'TWO'.
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING
+      ID              = L_NAME
+      VALUES          = LI_LIST
+    EXCEPTIONS
+      ID_ILLEGAL_NAME = 1
+      OTHERS          = 2.
+  IF SY-SUBRC <> 0.
+    MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+            WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+ENDFORM. " f4_value_request_PB
+*&----------------------------------------------------------------*
+*&      Form  f4_value_request_PC
+*&----------------------------------------------------------------*
+*       text
+*-----------------------------------------------------------------*
+*SUBROUTINE TO PROVIDE DROPDOWN VALUES TO LIST3
+FORM F4_VALUE_REQUEST_PC.
+  DATA: L_NAME TYPE VRM_ID,
+        LI_LIST TYPE VRM_VALUES,
+        L_VALUE LIKE LINE OF LI_LIST.
+  L_VALUE-KEY = '1'.
+  L_VALUE-TEXT = 'HR Master :Infotype 0001 (Org. Assignment)'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_VALUE-KEY = '2'.
+  L_VALUE-TEXT = 'Address Infotype 0006'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_VALUE-KEY = '3'.
+  L_VALUE-TEXT = 'Education Infotype 0022'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_VALUE-KEY = '4'.
+  L_VALUE-TEXT = 'Basic Pay Infotype 0008'.
+  APPEND L_VALUE TO LI_LIST.
+  CLEAR L_VALUE.
+  L_NAME = 'THREE'.
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING
+      ID              = L_NAME
+      VALUES          = LI_LIST
+    EXCEPTIONS
+      ID_ILLEGAL_NAME = 1
+      OTHERS          = 2.
+  IF SY-SUBRC <> 0.
+    MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+            WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+ENDFORM. " f4_value_request_PC
+*&----------------------------------------------------------------*
+*&      Form  OUTPUT
+*&----------------------------------------------------------------*
+*       text
+*-----------------------------------------------------------------*
+*      -->P_TABLENAME  text
+*-----------------------------------------------------------------*
+*fINAL OUTPUT
+FORM OUTPUT.
+  DATA P_TABLE(10).
+  P_TABLE = TABLENAME.
+*popup to display teh selected table and
+*Continue button is clicked
+  CALL FUNCTION 'POPUP_TO_DISPLAY_TEXT'
+    EXPORTING
+      TITEL        = 'User Selections '
+      TEXTLINE1    = P_TABLE
+      TEXTLINE2    = 'is the Selected table'
+      START_COLUMN = 25
+      START_ROW    = 6.
+*assigning the table value in p_table to the
+* Table in SE16 transaction by explicitly calling
+  SET PARAMETER ID 'DTB' FIELD P_TABLE.
+  CALL TRANSACTION 'SE16N'.
+ENDFORM.                    "OUTPUT
+*&---------------------------------------------------------------------*
+*&      Form  SHOW_PIC
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SHOW_PIC .
+
+  DATA: REPID LIKE SY-REPID.
+  REPID = SY-REPID.
+  CREATE OBJECT PICTURE_CONTROL_1 EXPORTING PARENT = DOCKING.
+  CHECK SY-SUBRC = 0.
+  CALL METHOD PICTURE_CONTROL_1->SET_3D_BORDER
+    EXPORTING
+      BORDER = 5.
+  CALL METHOD PICTURE_CONTROL_1->SET_DISPLAY_MODE
+    EXPORTING
+      DISPLAY_MODE = CL_GUI_PICTURE=>DISPLAY_MODE_STRETCH.
+  CALL METHOD PICTURE_CONTROL_1->SET_POSITION
+    EXPORTING
+      HEIGHT = 180
+      LEFT   = 10
+      TOP    = 73
+      WIDTH  = 900.
+*CHANGE POSITION AND SIZE ABOVE***************************
+  IF URL IS INITIAL.
+    REFRESH QUERY_TABLE.
+    QUERY_TABLE-NAME  = '_OBJECT_ID'.
+*CHANGE IMAGE NAME BELOW UPLOADED IN SWO0******************
+    QUERY_TABLE-VALUE = 'ZLOGO_DUC.JPG'."Binary image from SMW0
+    APPEND QUERY_TABLE.
+    CALL FUNCTION 'WWW_GET_MIME_OBJECT'
+      TABLES
+        QUERY_STRING        = QUERY_TABLE
+        HTML                = HTML_TABLE
+        MIME                = PIC_DATA
+      CHANGING
+        RETURN_CODE         = RETURN_CODE
+        CONTENT_TYPE        = CONTENT_TYPE
+        CONTENT_LENGTH      = CONTENT_LENGTH
+      EXCEPTIONS
+        OBJECT_NOT_FOUND    = 1
+        PARAMETER_NOT_FOUND = 2
+        OTHERS              = 3.
+    IF SY-SUBRC <> 0.
+*      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+*              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+    CALL FUNCTION 'DP_CREATE_URL'
+      EXPORTING
+        TYPE     = 'image'
+        SUBTYPE  = CNDP_SAP_TAB_UNKNOWN
+        SIZE     = PIC_SIZE
+        LIFETIME = CNDP_LIFETIME_TRANSACTION
+      TABLES
+        DATA     = PIC_DATA
+      CHANGING
+        URL      = URL
+      EXCEPTIONS
+        OTHERS   = 1.
+  ENDIF.
+  CALL METHOD PICTURE_CONTROL_1->LOAD_PICTURE_FROM_URL
+    EXPORTING
+      URL = URL.
+*Syntax for URL
+*url = 'file://D:\corp-gbanerji\pickut\cartoon_184.gif'.
+*url = 'http://l.yimg.com/a/i/ww/beta/y3.gif'.                   "show_pic
+ENDFORM.

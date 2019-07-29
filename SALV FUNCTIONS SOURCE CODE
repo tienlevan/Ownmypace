@@ -1,0 +1,402 @@
+
+*&---------------------------------------------------------------------*
+*& Report  ZVK_CL_SALV
+*&---------------------------------------------------------------------*
+*&Report using OOPs with Basic functionalities.
+*&---------------------------------------------------------------------*
+
+REPORT  ZVK_CL_SALV_1.
+TABLES : VBAK.
+TYPE-POOLS : ABAP,RSANM.
+
+TYPES : BEGIN OF T_VBAK.
+INCLUDE TYPE VBAK.
+TYPES : T_COLOR TYPE LVC_T_SCOL,
+        END OF T_VBAK.
+
+DATA : LT_VBAK TYPE STANDARD TABLE OF T_VBAK,
+       LS_VBAK TYPE T_VBAK.
+
+FIELD-SYMBOLS : <TAB> TYPE T_VBAK.
+
+DATA : L_REC(5)  TYPE N.
+
+** Declaration for ALV Grid **
+DATA : GR_TABLE TYPE REF TO CL_SALV_TABLE.
+
+** Declarations for ALV Functions
+DATA : GR_FUNCTIONS TYPE REF TO CL_SALV_FUNCTIONS_LIST.
+
+** declaration for ALV Columns
+DATA : GR_COLUMNS TYPE REF TO CL_SALV_COLUMNS_TABLE,
+       GR_COLUMN  TYPE REF TO CL_SALV_COLUMN_TABLE,
+       LT_COLUMN_REF TYPE SALV_T_COLUMN_REF,
+       LS_COLUMN_REF TYPE SALV_S_COLUMN_REF.
+
+** declaration for Layout Settings
+DATA : GR_LAYOUT TYPE REF TO CL_SALV_LAYOUT,
+       GR_LAYOUT_KEY TYPE SALV_S_LAYOUT_KEY,
+       LS_LAYOUT TYPE SALV_S_LAYOUT,
+       LT_LAYOUT_INFO TYPE SALV_T_LAYOUT_INFO.
+
+** Declaration for Global Display Settings
+DATA : GR_DISPLAY TYPE REF TO CL_SALV_DISPLAY_SETTINGS,
+       LV_TITLE   TYPE LVC_TITLE.
+
+** Declaration for Aggregate Function Settings
+DATA : GR_AGGR    TYPE REF TO CL_SALV_AGGREGATIONS.
+
+** Declaration for Sort Function Settings
+DATA : GR_SORT    TYPE REF TO CL_SALV_SORTS.
+
+** Declaration for Table Selection settings
+DATA : GR_SELECT  TYPE REF TO CL_SALV_SELECTIONS.
+
+** Declaration for Top of List settings
+DATA : GR_CONTENT TYPE REF TO CL_SALV_FORM_ELEMENT,
+       GR_CONTENT1 TYPE REF TO CL_SALV_FORM_ELEMENT.
+
+** Class for handling Events
+CLASS : LCL_HANDLE_EVENTS DEFINITION DEFERRED.
+DATA  : GR_EVENTS TYPE REF TO LCL_HANDLE_EVENTS,
+        LR_EVENTS TYPE REF TO CL_SALV_EVENTS_TABLE.
+
+** Coloring of Date columns **
+DATA : LT_COLO TYPE STANDARD TABLE OF LVC_S_COLO,
+       LS_COLO TYPE LVC_S_COLO.
+
+** Color Structure of columns **
+DATA : LT_COLOR TYPE LVC_T_SCOL,
+       LS_COLOR TYPE LVC_S_SCOL.
+*----------------------------------------------------------------------*
+*       CLASS lcl_handle_events DEFINITION
+*----------------------------------------------------------------------*
+CLASS LCL_HANDLE_EVENTS DEFINITION.
+  PUBLIC SECTION.
+    METHODS : ON_DOUBLE_CLICK FOR EVENT DOUBLE_CLICK OF CL_SALV_EVENTS_TABLE
+      IMPORTING ROW COLUMN.
+    METHODS : ON_LINK_CLICK FOR EVENT LINK_CLICK OF CL_SALV_EVENTS_TABLE
+      IMPORTING ROW COLUMN.
+ENDCLASS.                    "lcl_handle_events DEFINITION
+*----------------------------------------------------------------------*
+*       CLASS lcl_handle_events IMPLEMENTATION
+*----------------------------------------------------------------------*
+CLASS LCL_HANDLE_EVENTS IMPLEMENTATION.
+  METHOD ON_DOUBLE_CLICK.
+    PERFORM GET_ORD_INFO USING ROW COLUMN.
+  ENDMETHOD.                    "on_double_click
+  METHOD ON_LINK_CLICK.
+    PERFORM GET_ORD_INFO USING ROW COLUMN.
+  ENDMETHOD.                    "on_link_click
+ENDCLASS.                    "lcl_handle_events IMPLEMENTATION
+SELECTION-SCREEN BEGIN OF BLOCK B1.
+SELECT-OPTIONS : P_ERDAT FOR VBAK-ERDAT.
+PARAMETERS : P_VAR TYPE SLIS_VARI.
+SELECTION-SCREEN END OF BLOCK B1.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR P_VAR.
+  CLEAR : LS_LAYOUT.
+  TRY.
+      CALL METHOD CL_SALV_TABLE=>FACTORY
+        EXPORTING
+          LIST_DISPLAY = IF_SALV_C_BOOL_SAP=>FALSE
+        IMPORTING
+          R_SALV_TABLE = GR_TABLE
+        CHANGING
+          T_TABLE      = LT_VBAK.
+    CATCH CX_SALV_MSG .
+  ENDTRY.
+
+  IF GR_TABLE IS NOT INITIAL.
+    MOVE SY-REPID TO GR_LAYOUT_KEY-REPORT.     "Set Layout Key as Report ID"
+    GR_LAYOUT = GR_TABLE->GET_LAYOUT( ).       "Get Layout of the Table"
+    GR_LAYOUT->SET_KEY( GR_LAYOUT_KEY ).       "Set Layout key to Layout"
+    LT_LAYOUT_INFO = GR_LAYOUT->GET_LAYOUTS( )."Get the Layouts of report"
+    IF LT_LAYOUT_INFO[] IS NOT INITIAL.
+      LS_LAYOUT = GR_LAYOUT->F4_LAYOUTS( ).    "Activate F4 Help for Layouts"
+      IF LS_LAYOUT IS NOT INITIAL.
+        MOVE LS_LAYOUT-LAYOUT TO P_VAR.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+START-OF-SELECTION.
+  REFRESH : LT_VBAK.
+  SELECT * FROM VBAK
+    INTO CORRESPONDING FIELDS OF TABLE LT_VBAK
+    WHERE ERDAT IN P_ERDAT.
+
+
+  IF SY-SUBRC EQ 0.
+    DESCRIBE TABLE LT_VBAK LINES L_REC.
+    PERFORM SET_COLOR.
+    PERFORM ALV_GRID_DISPLAY.
+  ENDIF.
+
+*&---------------------------------------------------------------------*
+*&      Form  alv_grid_display
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM ALV_GRID_DISPLAY.
+  CLEAR : GR_TABLE.
+  TRY.
+      CALL METHOD CL_SALV_TABLE=>FACTORY
+        EXPORTING
+          LIST_DISPLAY = IF_SALV_C_BOOL_SAP=>FALSE
+        IMPORTING
+          R_SALV_TABLE = GR_TABLE
+        CHANGING
+          T_TABLE      = LT_VBAK.
+    CATCH CX_SALV_MSG .
+  ENDTRY.
+  IF GR_TABLE IS INITIAL.
+    MESSAGE 'Error Creating ALV Grid ' TYPE 'I' DISPLAY LIKE 'E'.
+    STOP.
+  ENDIF.
+** Get functions details
+  GR_FUNCTIONS = GR_TABLE->GET_FUNCTIONS( ).
+
+** Activate All Buttons in Tool Bar
+  GR_FUNCTIONS->SET_ALL( IF_SALV_C_BOOL_SAP=>TRUE ).
+
+******* Layout Settings  *******
+  CLEAR : GR_LAYOUT, GR_LAYOUT_KEY.
+  MOVE SY-REPID TO GR_LAYOUT_KEY-REPORT.                        "Set Report ID as Layout Key"
+
+  GR_LAYOUT = GR_TABLE->GET_LAYOUT( ).                          "Get Layout of Table"
+  GR_LAYOUT->SET_KEY( GR_LAYOUT_KEY ).                          "Set Report Id to Layout"
+  GR_LAYOUT->SET_SAVE_RESTRICTION( IF_SALV_C_LAYOUT=>RESTRICT_NONE ). "No Restriction to Save Layout"
+  IF P_VAR IS INITIAL.
+    GR_LAYOUT->SET_DEFAULT( IF_SALV_C_BOOL_SAP=>TRUE ).         "Set Default Variant"
+  ELSE.
+    GR_LAYOUT->SET_INITIAL_LAYOUT( P_VAR ).                     "Set the Selected Variant as Initial"
+  ENDIF.
+
+******* Global Display Settings  *******
+  CLEAR : GR_DISPLAY.
+  MOVE 'Sales Order Details' TO LV_TITLE.
+  GR_DISPLAY = GR_TABLE->GET_DISPLAY_SETTINGS( ).               " Global Display settings"
+  GR_DISPLAY->SET_STRIPED_PATTERN( IF_SALV_C_BOOL_SAP=>TRUE ).  "Activate Strip Pattern"
+  GR_DISPLAY->SET_LIST_HEADER( LV_TITLE ).                      "Report Header"
+
+******* Aggregate Function Settings *******
+  GR_AGGR = GR_TABLE->GET_AGGREGATIONS( ).                      "Get Aggregate Functions"
+
+******* Sort Functions *******
+  GR_SORT = GR_TABLE->GET_SORTS( ).
+  IF GR_SORT IS NOT INITIAL.
+    TRY.
+        GR_SORT->ADD_SORT( COLUMNNAME = 'ERNAM'
+                           POSITION = 1
+                           SEQUENCE   = IF_SALV_C_SORT=>SORT_UP
+                           SUBTOTAL   = IF_SALV_C_BOOL_SAP=>TRUE
+                           GROUP      = IF_SALV_C_SORT=>GROUP_NONE
+                           OBLIGATORY = IF_SALV_C_BOOL_SAP=>FALSE ).
+      CATCH CX_SALV_NOT_FOUND .
+      CATCH CX_SALV_EXISTING .
+      CATCH CX_SALV_DATA_ERROR .
+    ENDTRY.
+
+    TRY.
+        GR_SORT->ADD_SORT( COLUMNNAME = 'ERDAT'
+                           POSITION = 2
+                           SEQUENCE   = IF_SALV_C_SORT=>SORT_DOWN
+                           SUBTOTAL   = IF_SALV_C_BOOL_SAP=>FALSE
+                           GROUP      = IF_SALV_C_SORT=>GROUP_NONE
+                           OBLIGATORY = IF_SALV_C_BOOL_SAP=>FALSE ).
+      CATCH CX_SALV_NOT_FOUND .
+      CATCH CX_SALV_EXISTING .
+      CATCH CX_SALV_DATA_ERROR .
+    ENDTRY.
+  ENDIF.
+******* Table Selection Settings *******
+  GR_SELECT = GR_TABLE->GET_SELECTIONS( ).
+  IF GR_SELECT IS NOT INITIAL.
+    GR_SELECT->SET_SELECTION_MODE( IF_SALV_C_SELECTION_MODE=>ROW_COLUMN ). "Allow single row Selection"
+  ENDIF.
+
+******* Top of List settings *******
+  PERFORM TOP_OF_PAGE CHANGING GR_CONTENT.
+  GR_TABLE->SET_TOP_OF_LIST( GR_CONTENT ).
+
+**** End of List settings *******
+PERFORM END_OF_PAGE CHANGING GR_CONTENT1.
+GR_TABLE->SET_END_OF_LIST( GR_CONTENT1 ).
+
+******* Event Register settings *******
+  LR_EVENTS = GR_TABLE->GET_EVENT( ).
+  CREATE OBJECT GR_EVENTS.
+  SET HANDLER GR_EVENTS->ON_DOUBLE_CLICK FOR LR_EVENTS.
+  SET HANDLER GR_EVENTS->ON_LINK_CLICK FOR LR_EVENTS.
+
+** Get the columns from ALV Table
+  GR_COLUMNS = GR_TABLE->GET_COLUMNS( ).
+  IF GR_COLUMNS IS NOT INITIAL.
+    REFRESH : LT_COLUMN_REF.
+    CLEAR   : LS_COLUMN_REF.
+    LT_COLUMN_REF = GR_COLUMNS->GET( ).
+
+** Get columns properties
+    GR_COLUMNS->SET_OPTIMIZE( IF_SALV_C_BOOL_SAP=>TRUE ).
+    GR_COLUMNS->SET_KEY_FIXATION( IF_SALV_C_BOOL_SAP=>TRUE ).
+    TRY.
+        GR_COLUMNS->SET_COLOR_COLUMN( 'T_COLOR' ).
+      CATCH CX_SALV_DATA_ERROR .
+    ENDTRY.
+** Individual Column Properties.
+    PERFORM COLUMN_SETTINGS.
+  ENDIF.
+  CALL METHOD GR_TABLE->DISPLAY.
+ENDFORM.                    "alv_grid_display
+
+*&---------------------------------------------------------------------*
+*&      Form  column_settings
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM COLUMN_SETTINGS.
+  LOOP AT LT_COLUMN_REF INTO LS_COLUMN_REF.
+    TRY.
+        GR_COLUMN ?= GR_COLUMNS->GET_COLUMN( LS_COLUMN_REF-COLUMNNAME ).
+      CATCH CX_SALV_NOT_FOUND.
+    ENDTRY.
+    IF GR_COLUMN IS NOT INITIAL.
+** Make Mandt column invisible **
+      IF GR_COLUMN->GET_DDIC_DATATYPE( ) = 'CLNT'.
+        GR_COLUMN->SET_TECHNICAL( IF_SALV_C_BOOL_SAP=>TRUE ).
+      ENDIF.
+** Create Aggregate function total for All Numeric/Currency Fields **
+      IF GR_COLUMN->GET_DDIC_INTTYPE( ) EQ 'P' OR
+         GR_COLUMN->GET_DDIC_DATATYPE( ) EQ 'CURR'.
+        IF GR_AGGR IS NOT INITIAL.
+          TRY.
+              GR_AGGR->ADD_AGGREGATION( COLUMNNAME = LS_COLUMN_REF-COLUMNNAME
+                                        AGGREGATION = IF_SALV_C_AGGREGATION=>TOTAL ).
+            CATCH CX_SALV_DATA_ERROR .
+            CATCH CX_SALV_NOT_FOUND .
+            CATCH CX_SALV_EXISTING .
+          ENDTRY.
+        ENDIF.
+      ENDIF.
+** Create Check box for fields with domain "XFELD"
+      IF GR_COLUMN->GET_DDIC_DOMAIN( ) EQ 'XFELD'.
+        GR_COLUMN->SET_CELL_TYPE( IF_SALV_C_CELL_TYPE=>CHECKBOX ).
+      ENDIF.
+
+** Set color to Date Columns **
+      IF GR_COLUMN->GET_DDIC_DATATYPE( ) EQ 'DATS'.
+        CLEAR : LS_COLO.
+        MOVE 2 TO LS_COLO-COL.
+        MOVE 1 TO LS_COLO-INT.
+        MOVE 1 TO LS_COLO-INV.
+        GR_COLUMN->SET_COLOR( LS_COLO ).
+      ENDIF.
+
+** Add Hotspot&Hyper Link to the column vbeln
+      IF LS_COLUMN_REF-COLUMNNAME EQ 'VBELN'.
+        GR_COLUMN->SET_CELL_TYPE( IF_SALV_C_CELL_TYPE=>HOTSPOT ).
+        GR_COLUMN->SET_KEY( IF_SALV_C_BOOL_SAP=>TRUE ).
+      ENDIF.
+
+    ENDIF.
+  ENDLOOP.
+ENDFORM.                    "column_settings
+
+*&---------------------------------------------------------------------*
+*&      Form  top_of_page
+*&---------------------------------------------------------------------*
+FORM TOP_OF_PAGE CHANGING LR_CONTENT TYPE REF TO CL_SALV_FORM_ELEMENT.
+  DATA : LR_GRID TYPE REF TO CL_SALV_FORM_LAYOUT_GRID,
+         LR_TEXT  TYPE REF TO CL_SALV_FORM_TEXT,
+         LR_LABEL TYPE REF TO CL_SALV_FORM_LABEL,
+         LR_HEAD  TYPE STRING,
+         LR_PICTURE TYPE REF TO CL_SALV_FORM_PICTURE.
+
+  MOVE 'Sales Order List' TO LR_HEAD.
+  CREATE OBJECT LR_GRID.
+** Header of Top of Page **
+  LR_GRID->CREATE_HEADER_INFORMATION( ROW     = 1
+                                      COLUMN  = 1
+                                      TEXT    = LR_HEAD
+                                      TOOLTIP = LR_HEAD ).
+** Add Row **
+  LR_GRID->ADD_ROW( ).
+
+** Add Label in Grid **
+  LR_LABEL = LR_GRID->CREATE_LABEL( ROW = 2
+                                    COLUMN = 1
+                                    TEXT = 'No of Records'
+                                    TOOLTIP = 'No of Records' ).
+
+** Add Text in The Grid **
+  LR_TEXT = LR_GRID->CREATE_TEXT( ROW = 2
+                                  COLUMN = 2
+                                  TEXT = L_REC
+                                  TOOLTIP = L_REC ).
+** Set Label and Text Link **
+  LR_LABEL->SET_LABEL_FOR( LR_TEXT ).
+
+** Move lr_grid to lr_content **
+  LR_CONTENT = LR_GRID.
+
+CREATE OBJECT LR_PICTURE.
+LR_PICTURE->SET_PICTURE_ID( 'ZIMAGE' ).
+LR_GRID->SET_ELEMENT( ROW = 1 COLUMN = 20 R_ELEMENT = LR_PICTURE ) .
+ENDFORM.                    "top_of_page
+
+*&---------------------------------------------------------------------*
+*&      Form
+*&---------------------------------------------------------------------*
+FORM GET_ORD_INFO USING ROW TYPE SALV_DE_ROW
+                        COLUMN TYPE SALV_DE_COLUMN.
+  IF COLUMN EQ 'VBELN'.
+    CLEAR : LS_VBAK.
+    READ TABLE LT_VBAK INTO LS_VBAK INDEX ROW.
+    IF SY-SUBRC EQ 0.
+      SET PARAMETER ID 'AUN' FIELD LS_VBAK-VBELN.
+      CALL TRANSACTION 'VA03' AND SKIP FIRST SCREEN.
+    ENDIF.
+  ENDIF.
+ENDFORM.                    "get_ord_info
+
+*&---------------------------------------------------------------------*
+*&      Form  set_color
+*&---------------------------------------------------------------------*
+* Set color to the column VBELN & NETWR for Order Value > 1000
+*----------------------------------------------------------------------*
+FORM SET_COLOR.
+  LOOP AT LT_VBAK ASSIGNING <TAB>.
+    IF <TAB>-NETWR GT 1000.
+      REFRESH : LT_COLOR.
+
+      CLEAR : LS_COLOR.
+      MOVE 'VBELN' TO LS_COLOR-FNAME.
+      MOVE 3       TO LS_COLOR-COLOR-COL.
+      MOVE 0       TO LS_COLOR-COLOR-INT.
+      MOVE 0       TO LS_COLOR-COLOR-INV.
+      APPEND LS_COLOR TO LT_COLOR.
+
+      CLEAR : LS_COLOR.
+      MOVE 'NETWR' TO LS_COLOR-FNAME.
+      MOVE 3       TO LS_COLOR-COLOR-COL.
+      MOVE 0       TO LS_COLOR-COLOR-INT.
+      MOVE 0       TO LS_COLOR-COLOR-INV.
+      APPEND LS_COLOR TO LT_COLOR.
+
+      MOVE LT_COLOR TO <TAB>-T_COLOR.
+    ENDIF.
+  ENDLOOP.
+ENDFORM.                    "set_color
+*&---------------------------------------------------------------------*
+*&      Form  END_OF_PAGE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      <--P_GR_CONTENT  text
+*----------------------------------------------------------------------*
+FORM END_OF_PAGE  CHANGING P_GR_CONTENT1.
+DATA: LR_GRID TYPE REF TO CL_SALV_FORM_LAYOUT_GRID.
+CREATE OBJECT LR_GRID.
+LR_GRID->CREATE_LABEL( ROW = 1 COLUMN = 1 TEXT = 'End of the page' ).
+ENDFORM.

@@ -1,0 +1,95 @@
+*&---------------------------------------------------------------------*
+*& Report ZSM_POPRINT
+*& Set up form:
+*& - Set up table import for data LIKE a flat structure with declare at SE11
+*& - Declare working are type structure for loop, any quant or cuur field should
+*& be reference with file have a same attributions.
+*& - In case of collecting many documents in a form use complex section to loop
+*&
+*&---------------------------------------------------------------------*
+*& Some errors:
+*& - Internal table for importing should be same as structure declare in driven program.
+*& - In table for loop, creat calculation rule for subtotal each table with initial check.
+*&---------------------------------------------------------------------*
+REPORT ZSM_POPRINT.
+
+TABLES: EKPO, EKKO.
+
+DATA: BEGIN OF WA_EKKO,
+       BUKRS TYPE EKKO-BUKRS,
+       EBELN TYPE EKKO-EBELN,
+       WAERS TYPE EKKO-WAERS,
+      END OF WA_EKKO.
+
+DATA: BEGIN OF WA_EKPO,
+       EBELN LIKE EKPO-EBELN,
+       EBELP LIKE EKPO-EBELP,
+       MENGE LIKE EKPO-MENGE,
+       NETPR LIKE EKPO-NETPR,
+       MEINS LIKE EKPO-MEINS,
+      END OF WA_EKPO.
+
+DATA:   T_EKKO LIKE STANDARD TABLE OF WA_EKKO,
+       T_EKPO LIKE STANDARD TABLE OF WA_EKPO.
+
+Select-OPTIONS: PO_NUM FOR EKKO-EBELN,
+                CUS_NUM FOR EKKO-LIFNR.
+
+START-OF-SELECTION.
+
+SELECT * FROM EKKO INTO CORRESPONDING FIELDS OF TABLE T_EKKO WHERE EBELN IN PO_NUM
+                                                                  AND LIFNR IN CUS_NUM.
+
+SELECT * FROM EKPO INTO CORRESPONDING FIELDS OF TABLE T_EKPO FOR ALL ENTRIES IN T_EKKO WHERE
+                                                                       EBELN = T_EKKO-EBELN.
+* CALL FORM FOR PRINT
+
+DATA : FORM_NAME TYPE TDSFNAME VALUE 'Z_PO_PRINT', "Form Name
+       FM_NAME TYPE RS38L_FNAM. "Function Module Name
+
+DATA: WA_CPARAM          TYPE SSFCTRLOP,
+     WA_OUTPUT          TYPE SSFCOMPOP.
+*       WA_JOB_OUTPUT_INFO TYPE SSFCRESCL.
+
+* WA_CPARAM-NO_DIALOG = 'X'.
+*  WA_CPARAM-PREVIEW   = 'X'.
+  WA_OUTPUT-TDDEST    = 'LP01'.
+  wa_cparam-no_dialog = 'X'.
+  wa_cparam-preview = 'X'.
+  WA_OUTPUT-TDNOPREV  = 'X'.
+  WA_OUTPUT-TDIMMED   = 'X'.
+  WA_OUTPUT-TDDELETE  = 'X'.
+
+CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+EXPORTING
+FORMNAME = FORM_NAME
+IMPORTING
+FM_NAME = FM_NAME
+EXCEPTIONS
+NO_FORM = 1
+NO_FUNCTION_MODULE = 2
+OTHERS = 3.
+IF SY-SUBRC <> 0.
+MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+ENDIF.
+
+CALL FUNCTION FM_NAME
+EXPORTING
+CONTROL_PARAMETERS = WA_CPARAM
+OUTPUT_OPTIONS     = WA_OUTPUT
+user_settings = ' '
+OMPANY_CODE       = 1000
+TABLES
+T_EKPO       = T_EKPO
+T_EKKO        = T_EKKO
+EXCEPTIONS
+FORMATTING_ERROR = 1
+INTERNAL_ERROR = 2
+SEND_ERROR = 3
+USER_CANCELED = 4
+OTHERS = 5.
+IF SY-SUBRC <> 0.
+MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+ENDIF.

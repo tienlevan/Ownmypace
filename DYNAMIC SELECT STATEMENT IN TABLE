@@ -1,0 +1,643 @@
+*&---------------------------------------------------------------------*
+*& Report ZDEMO_TABLE_ACCESS
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZDEMO_TABLE_ACCESS NO STANDARD PAGE HEADING MESSAGE-ID zag.
+*Data Declaration------------------------------------------------------
+CONSTANTS:c_a     TYPE as4local VALUE 'A',
+          c_x     TYPE char1    VALUE 'X',
+          c_ver   TYPE as4vers  VALUE '0000',
+          c_mandt TYPE char5    VALUE 'MANDT'.
+TYPES:BEGIN OF ty_range,
+        sign   TYPE char2,
+        option TYPE char1,
+        low    TYPE fieldname,
+        high   TYPE fieldname,
+      END OF ty_range.
+TYPES: t_ddfields TYPE STANDARD TABLE OF dntab,
+       t_dd17s    TYPE STANDARD TABLE OF dd17s,
+       t_tab      TYPE STANDARD TABLE OF string,
+       t_range    TYPE RANGE          OF fieldname.
+DATA:v_fieldname TYPE fieldname,
+     v_prog  TYPE string,
+     v_mess  TYPE string,
+     v_sid   TYPE string,
+     wa_ddfields  TYPE dntab.
+DATA:r_tab TYPE RANGE OF ty_range.
+DATA : i_ddfields   TYPE STANDARD TABLE OF dntab ,
+       i_tab        TYPE STANDARD TABLE OF string,
+       i_index      TYPE STANDARD TABLE OF dd17s.
+*Selection Screen-------------------------------------------------------
+SELECTION-SCREEN BEGIN OF BLOCK aaa WITH FRAME TITLE text-001.
+PARAMETERS: p_table(16)  TYPE c OBLIGATORY. "Table name
+SELECTION-SCREEN END OF BLOCK aaa.
+SELECTION-SCREEN BEGIN OF BLOCK bbb WITH FRAME TITLE text-002.
+SELECT-OPTIONS: s_field FOR v_fieldname NO INTERVALS OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK bbb.
+SELECTION-SCREEN BEGIN OF BLOCK ccc WITH FRAME TITLE text-003.
+PARAMETERS: p_field1(18) TYPE c .
+SELECT-OPTIONS: s_field1 FOR v_fieldname.
+PARAMETERS: p_field2(18) TYPE c .
+SELECT-OPTIONS: s_field2 FOR v_fieldname.
+PARAMETERS: p_field3(18) TYPE c .
+SELECT-OPTIONS: s_field3 FOR v_fieldname.
+PARAMETERS: p_field4(18) TYPE c .
+SELECT-OPTIONS: s_field4 FOR v_fieldname.
+PARAMETERS: p_field5(18) TYPE c .
+SELECT-OPTIONS: s_field5 FOR v_fieldname.
+SELECTION-SCREEN END OF BLOCK ccc.
+*At selection screen---------------------------------------------------
+*Validate Table name
+AT SELECTION-SCREEN ON p_table.
+  PERFORM f_validate_tabname.
+*Validate field name
+AT SELECTION-SCREEN.
+  PERFORM f_validate_fieldname CHANGING i_ddfields.
+* Validate Display fields
+  PERFORM f_validate_disfield USING i_ddfields.
+* Validate where field name1
+  PERFORM f_validate_wherefield USING i_ddfields
+                                      p_field1.
+* Validate where field name2
+  PERFORM f_validate_wherefield USING i_ddfields
+                                      p_field2.
+* Validate where field name3
+  PERFORM f_validate_wherefield USING i_ddfields
+                                      p_field3.
+* Validate where field name4
+  PERFORM f_validate_wherefield USING i_ddfields
+                                      p_field4.
+* Validate where field name5
+  PERFORM f_validate_wherefield USING i_ddfields
+                                      p_field5.
+* Validate sequence of where fields
+  PERFORM f_validate_sequence.
+*At start-of-selection --------------------------------------------
+ START-OF-SELECTION.
+* Perform the Primary Index calculation
+  PERFORM f_primary_index USING i_ddfields.
+* Perform the Primary Index calculation
+  PERFORM f_secondary_index CHANGING i_index.
+* Build Dynamic Data declaration
+  PERFORM f_dyn_data_dclr CHANGING i_tab.
+* Dynamic selection and Program generation
+  APPEND `LOAD-OF-PROGRAM.` TO i_tab.
+* Build Range table1
+  PERFORM f_dyn_range_bld USING    s_field1[]
+                                   'waran'
+                                   'rtab'
+                          CHANGING i_tab.
+* Build Range table2
+  PERFORM f_dyn_range_bld USING    s_field2[]
+                                   'waran1'
+                                   'rtab1'
+                          CHANGING i_tab.
+* Build Range table3
+  PERFORM f_dyn_range_bld USING    s_field3[]
+                                   'waran2'
+                                   'rtab2'
+                          CHANGING i_tab.
+* Build Range table2
+  PERFORM f_dyn_range_bld USING    s_field4[]
+                                   'waran3'
+                                   'rtab3'
+                          CHANGING i_tab.
+* Build Range table2
+  PERFORM f_dyn_range_bld USING    s_field5[]
+                                   'waran4'
+                                   'rtab4'
+                          CHANGING i_tab.
+* Build SELECT statement
+  PERFORM f_select_bld CHANGING i_tab.
+*At end-of-selection --------------------------------------------
+ END-OF-SELECTION.
+* Build Display the dynamic selection
+  PERFORM f_display_fld CHANGING i_tab.
+* Generate the Program and execute the perform
+  PERFORM f_display_report USING i_tab.
+*&---------------------------------------------------------------------*
+*&      Form  f_Validate_tabname
+*&---------------------------------------------------------------------*
+*       text:Validate Selection Screen Table name
+*----------------------------------------------------------------------*
+FORM f_validate_tabname .
+  DATA:l_tabname TYPE tabname.
+  SELECT SINGLE tabname
+  INTO l_tabname
+  FROM dd02l
+  WHERE tabname = p_table
+    AND as4local = c_a
+    AND as4vers = c_ver.
+  IF sy-subrc <> 0 OR l_tabname IS INITIAL.
+    MESSAGE e101."Please enter valid table name.
+  ENDIF.
+ENDFORM.                    " f_Validate_tabname
+*&---------------------------------------------------------------------*
+*&      Form  f_Validate_fieldname
+*&---------------------------------------------------------------------*
+*       text:Get all field names
+*----------------------------------------------------------------------*
+FORM f_validate_fieldname CHANGING fp_ddfields TYPE t_ddfields.
+  DATA:l_iname TYPE tabname.
+  l_iname = p_table.
+  CALL FUNCTION 'NAMETAB_GET'
+    EXPORTING
+      langu   = sy-langu
+      tabname = l_iname
+    TABLES
+      nametab = fp_ddfields.
+  IF NOT fp_ddfields[] IS INITIAL.
+    DELETE fp_ddfields WHERE fieldname = c_mandt.
+  ENDIF.
+ENDFORM.                    " f_Validate_fieldname
+*&---------------------------------------------------------------------*
+*&      Form  f_validate_disfield
+*&---------------------------------------------------------------------*
+*       text:Validate display fields
+*----------------------------------------------------------------------*
+FORM f_validate_disfield  USING    fp_ddfields  TYPE t_ddfields.
+  LOOP AT s_field.
+    READ TABLE fp_ddfields WITH KEY fieldname = s_field-low
+      TRANSPORTING NO FIELDS.
+    IF sy-subrc <> 0.
+      MESSAGE e102."Please enter valid display field.
+    ENDIF.
+  ENDLOOP.
+ENDFORM.                    " f_validate_disfield
+*&---------------------------------------------------------------------*
+*&      Form  f_validate_disfield
+*&---------------------------------------------------------------------*
+*       text:Validate WHERE fields
+*----------------------------------------------------------------------*
+FORM f_validate_wherefield  USING    fp_ddfields  TYPE t_ddfields
+                                     fp_field     TYPE char18.
+  IF NOT fp_field IS INITIAL.
+    READ TABLE fp_ddfields WITH KEY fieldname = fp_field
+      TRANSPORTING NO FIELDS.
+    IF sy-subrc <> 0.
+      MESSAGE e103."Please enter Where display field.
+    ENDIF.
+  ENDIF.
+ENDFORM.                    " f_validate_wherefield
+*&---------------------------------------------------------------------*
+*&      Form  f_validate_sequence
+*&---------------------------------------------------------------------*
+*       text:Validate the where sequence
+*----------------------------------------------------------------------*
+FORM f_validate_sequence .
+  DATA:l_sequence  TYPE char90,
+       l_length    TYPE syindex,
+       l_length1   TYPE syindex.
+  CONCATENATE p_field1 p_field2 p_field3 p_field4 p_field5
+    INTO l_sequence SEPARATED BY '#'.
+  l_length = STRLEN( l_sequence ).
+  l_length1 = l_length - 1.
+  DO l_length TIMES.
+    CHECK l_sequence+l_length1(1) = '#'.
+    IF l_length1 <> 0.
+      l_sequence = l_sequence(l_length1).
+      l_length1 = l_length1 - 1.
+    ELSE.
+      CLEAR l_sequence.
+    ENDIF.
+  ENDDO.
+  IF ( l_sequence(l_length) CS '##' OR  l_sequence(1) = '#' ) .
+    MESSAGE e104."Please maintain Where fields sequence.
+  ENDIF.
+ENDFORM.                    " f_validate_sequence
+*&---------------------------------------------------------------------*
+*&      Form  f_primary_index
+*&---------------------------------------------------------------------*
+*       text:Determine the Primary Index
+*----------------------------------------------------------------------*
+*      -->FP_DDFIELDS  text:Field values
+*----------------------------------------------------------------------*
+FORM f_primary_index  USING    fp_ddfields TYPE t_ddfields.
+  DATA:l_flag  TYPE sy-index.
+* IF No where field specified Then No primary index
+  IF      p_field1 IS INITIAL
+     AND  p_field2 IS INITIAL
+     AND  p_field3 IS INITIAL
+     AND  p_field4 IS INITIAL
+     AND  p_field5 IS INITIAL.
+    l_flag = 1.
+  ENDIF.
+* Loop throuth Each of the Key fields
+  LOOP AT fp_ddfields INTO wa_ddfields WHERE keyflag = c_x.
+    CASE sy-tabix.
+      WHEN 1.
+        IF NOT p_field1 = wa_ddfields-fieldname.
+          l_flag = 1.
+          EXIT.
+        ENDIF.
+      WHEN 2.
+        IF NOT  p_field2 = wa_ddfields-fieldname.
+          l_flag = 2.
+          EXIT.
+        ENDIF.
+      WHEN 3.
+        IF NOT  p_field3 = wa_ddfields-fieldname.
+          l_flag = 2.
+          EXIT.
+        ENDIF.
+      WHEN 4.
+        IF NOT  p_field4 = wa_ddfields-fieldname.
+          l_flag = 2.
+          EXIT.
+        ENDIF.
+      WHEN 5.
+        IF NOT  p_field5 = wa_ddfields-fieldname.
+          l_flag = 2.
+          EXIT.
+        ENDIF.
+    ENDCASE.
+  ENDLOOP.
+  FORMAT COLOR 3 INTENSIFIED ON.
+  CASE l_flag.
+    WHEN 0.
+      WRITE :/ text-004."Full Primary Index
+    WHEN 1.
+      WRITE :/ text-005."No Primary Index
+    WHEN 2.
+      WRITE :/ text-006."Partially Primary Index
+  ENDCASE.
+  SKIP 1.
+  FORMAT COLOR OFF INTENSIFIED OFF.
+ENDFORM.                    " f_primary_index
+*&---------------------------------------------------------------------*
+*&      Form  f_secondary_index
+*&---------------------------------------------------------------------*
+*       text:Determine secondary Index
+*----------------------------------------------------------------------*
+*      <--FP_S_INDEX  text:Secondary Index Table
+*----------------------------------------------------------------------*
+FORM f_secondary_index  CHANGING fp_s_index TYPE t_dd17s.
+* Local Data declaration
+  DATA : l_flag   TYPE syindex,
+         l_flag1  TYPE syindex,
+         l_index  TYPE indexid.
+  FIELD-SYMBOLS:<lfs_index> TYPE dd17s.
+* Get All the secondary Index Data
+  SELECT *
+  FROM dd17s
+  INTO TABLE fp_s_index
+  WHERE sqltab  = p_table
+  AND   as4local = c_a
+  AND   as4vers = c_ver.
+  IF sy-subrc = 0.
+    DELETE fp_s_index WHERE fieldname = c_mandt.
+*   If no field specified then NO index used
+    IF      p_field1 IS INITIAL
+       AND  p_field2 IS INITIAL
+       AND  p_field3 IS INITIAL
+       AND  p_field4 IS INITIAL
+       AND  p_field5 IS INITIAL.
+      l_flag = 1.
+    ENDIF.
+    LOOP AT fp_s_index ASSIGNING <lfs_index>.
+      l_index = <lfs_index>-indexname.
+      CASE sy-tabix.
+        WHEN 1.
+          IF NOT p_field1 = <lfs_index>-fieldname.
+            l_flag = 1."No Index
+          ENDIF.
+        WHEN 2.
+*       For the Current Loop if it is already
+*       No S Index Identified then No need to check
+*       Futher
+          IF l_flag <> 1.
+            IF NOT  p_field2 = <lfs_index>-fieldname.
+              l_flag = 2."Partially Index
+            ENDIF.
+          ENDIF.
+        WHEN 3.
+          IF l_flag <> 1.
+            IF NOT  p_field3 = <lfs_index>-fieldname.
+              l_flag = 2.
+            ENDIF.
+          ENDIF.
+        WHEN 4.
+          IF l_flag <> 1.
+            IF NOT  p_field4 = <lfs_index>-fieldname.
+              l_flag = 2.
+            ENDIF.
+          ENDIF.
+        WHEN 5.
+          IF l_flag <> 1.
+            IF NOT  p_field5 = <lfs_index>-fieldname.
+              l_flag = 2.
+            ENDIF.
+          ENDIF.
+      ENDCASE.
+*   At End Of Index - End of every Index
+      IF l_index <> <lfs_index>-indexname.
+        IF l_flag = 0.
+          l_flag1 = 0."Full Index
+          EXIT.
+        ELSEIF l_flag = 1.
+          IF l_flag1 <> 2.
+            l_flag1 = l_flag.
+          ENDIF.
+          CLEAR l_flag.
+        ELSEIF l_flag = 2.
+          IF l_flag1 = 1.
+            l_flag1 = l_flag.
+          ENDIF.
+          CLEAR l_flag.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+    CLEAR <lfs_index>-indexname.
+    IF l_index <> <lfs_index>-indexname.
+      IF l_flag = 0.
+        l_flag1 = 0."Full Index
+      ELSEIF l_flag = 1.
+*     If the Current Pass is No index and
+*     Previous Pass was partially Index
+*     Then Don't do anything
+        IF l_flag1 <> 2.
+          l_flag1 = l_flag.
+        ENDIF.
+        CLEAR l_flag.
+      ELSEIF l_flag = 2.
+*     If the Current Pass is partially index and
+*     Previous Pass was No Index
+*     Then Change the pass value
+        IF l_flag1 = 1 OR l_flag1 = 0.
+          l_flag1 = l_flag.
+        ENDIF.
+        CLEAR l_flag.
+      ENDIF.
+    ENDIF.
+    FORMAT COLOR 4 INTENSIFIED ON.
+    CASE l_flag1.
+      WHEN 0.
+        WRITE :/ text-007."Full Secondary Index
+      WHEN 1.
+        WRITE :/ text-008."No Secondary Index
+      WHEN 2.
+        WRITE :/ text-009."Partially Secondary Index
+    ENDCASE.
+    SKIP 1.
+    FORMAT COLOR OFF INTENSIFIED OFF.
+  ENDIF.
+ENDFORM.                    " f_secondary_index
+*&---------------------------------------------------------------------*
+*&      Form  f_dyn_data_dclr
+*&---------------------------------------------------------------------*
+*       text:Build Dynamic data declaration
+*----------------------------------------------------------------------*
+*      <--FP_TAB  text:Store Dynamic progran
+*----------------------------------------------------------------------*
+form f_dyn_data_dclr  changing fp_tab TYPE t_tab.
+* Local data declaration
+  DATA:l_str  TYPE string,
+       l_str1 TYPE string.
+* Build the subroutine pool
+  APPEND 'PROGRAM subpool.'                      TO fp_tab.
+* Build Type declaration to store the data
+  APPEND 'TYPES:BEGIN OF TY_TAB,'                TO fp_tab.
+  LOOP AT s_field.
+    CONCATENATE p_table '-' s_field-low ','
+    INTO l_str1.
+    CONCATENATE s_field-low 'TYPE' l_str1
+    INTO l_str SEPARATED BY space.
+    APPEND l_str                                 TO fp_tab.
+    CLEAR:l_str,
+          l_str1.
+  ENDLOOP.
+  APPEND 'END OF TY_TAB.'                        TO fp_tab.
+* Declare Internal table
+  APPEND `DATA i_tab TYPE TABLE OF TY_TAB.`      TO fp_tab.
+* Declare the range table and work are for first field
+  IF NOT p_field1 IS INITIAL.
+    CLEAR l_str.
+    CONCATENATE `RANGES rtab FOR ` p_table '-' p_field1 '.'
+    INTO l_str.
+    APPEND l_str                                 TO fp_tab.
+    APPEND `DATA waran LIKE LINE OF rtab.`       TO fp_tab.
+  ENDIF.
+* Declare the range table and work are for second field
+  IF NOT p_field2 IS INITIAL.
+    CLEAR l_str.
+    CONCATENATE `RANGES rtab1 FOR ` p_table '-' p_field2 '.'
+    INTO l_str.
+    APPEND l_str                                 TO fp_tab.
+    APPEND `DATA waran1 LIKE LINE OF rtab1.`     TO fp_tab.
+  ENDIF.
+* Declare the range table and work are for third field
+  IF NOT p_field3 IS INITIAL.
+    CLEAR l_str.
+    CONCATENATE `RANGES rtab2 FOR ` p_table '-' p_field3 '.'
+    INTO l_str.
+    APPEND l_str                                TO fp_tab.
+    APPEND `DATA waran2 LIKE LINE OF rtab2.`    TO fp_tab.
+  ENDIF.
+* Declare the range table and work are for fourth field
+  IF NOT p_field4 IS INITIAL.
+    CLEAR l_str.
+    CONCATENATE `RANGES rtab3 FOR ` p_table '-' p_field4 '.'
+    INTO l_str.
+    APPEND l_str                               TO fp_tab.
+    APPEND `DATA waran3 LIKE LINE OF rtab3.`   TO fp_tab.
+  ENDIF.
+* Declare the range table and work are for fifth field
+  IF NOT p_field5 IS INITIAL.
+    CLEAR l_str.
+    CONCATENATE `RANGES rtab4 FOR ` p_table '-' p_field5 '.'
+    INTO l_str.
+    APPEND l_str                                TO fp_tab.
+    APPEND `DATA waran4 LIKE LINE OF rtab4.`    TO fp_tab.
+  ENDIF.
+endform.                    " f_dyn_data_dclr
+*&---------------------------------------------------------------------*
+*&      Form  f_dyn_range_bld
+*&---------------------------------------------------------------------*
+*       text:Build Dynamic range table
+*----------------------------------------------------------------------*
+*      <--FP_TAB  text:Store Dynamic program
+*----------------------------------------------------------------------*
+form f_dyn_range_bld  USING    fp_field TYPE t_range
+                               fp_work  TYPE any
+                               fp_rtab  TYPE any
+                      changing fp_tab TYPE t_tab.
+* Local data declaration
+  DATA:l_str  TYPE string,
+       lwa_range LIKE LINE OF r_tab.
+  LOOP AT fp_field INTO lwa_range.
+    CLEAR l_str.
+    CONCATENATE fp_work `-sign = ` '`' lwa_range-sign '`' '.'
+    INTO l_str..
+    APPEND l_str                                            TO fp_tab.
+    CLEAR l_str.
+    CONCATENATE fp_work `-option = ` '`' lwa_range-option '`' '.'
+    INTO l_str.
+    APPEND l_str                                            TO fp_tab.
+    CLEAR l_str.
+    CONCATENATE fp_work `-low = ` '`' lwa_range-low '`' '.'
+    INTO l_str.
+    APPEND l_str                                            TO fp_tab.
+    CLEAR l_str.
+    IF NOT lwa_range-high IS INITIAL.
+      CONCATENATE fp_work `-high = ` '`' lwa_range-high '`' '.'
+      INTO l_str.
+      APPEND l_str                                         TO fp_tab.
+    ENDIF.
+    CLEAR l_str.
+    CONCATENATE `APPEND` fp_work `TO ` fp_rtab   `.`
+    INTO l_str SEPARATED BY SPACE.
+    APPEND l_str                                           TO fp_tab.
+  ENDLOOP.
+endform.                    " f_dyn_range_bld
+*&---------------------------------------------------------------------*
+*&      Form  f_display_report
+*&---------------------------------------------------------------------*
+*       text:Display report
+*----------------------------------------------------------------------*
+*      -->FP_TAB  text:Store Whole Program
+*----------------------------------------------------------------------*
+form f_display_report  using fp_tab TYPE t_tab.
+  GENERATE SUBROUTINE POOL fp_tab NAME v_prog
+           MESSAGE v_mess
+           SHORTDUMP-ID v_sid.
+  IF sy-subrc = 0.
+    PERFORM ('LOOP_AT_TAB') IN PROGRAM (v_prog) IF FOUND.
+  ELSEIF sy-subrc = 4.
+    MESSAGE v_mess TYPE 'I'.
+  ELSEIF sy-subrc = 8.
+    MESSAGE v_sid TYPE 'I'.
+  ENDIF.
+endform.                    " f_display_report
+*&---------------------------------------------------------------------*
+*&      Form  f_select_bld
+*&---------------------------------------------------------------------*
+*       text:Build Select statement
+*----------------------------------------------------------------------*
+*      <--FP_TAB  text:Store Whole Program
+*----------------------------------------------------------------------*
+form f_select_bld  changing fp_tab TYPE t_tab.
+* Local data declaration
+  DATA:l_str  TYPE string.
+* Build the INTo-field
+  LOOP AT s_field.
+    CONCATENATE l_str s_field-low INTO l_str SEPARATED BY space.
+  ENDLOOP.
+* Build the Select INTO
+  CONCATENATE `  SELECT ` l_str INTO l_str SEPARATED BY space.
+  APPEND l_str                                         TO fp_tab.
+* Build the FROM table
+  CLEAR l_str.
+  CONCATENATE `  FROM ` p_table INTO l_str SEPARATED BY space.
+  APPEND l_str                                        TO fp_tab.
+* Build the INTO table
+  APPEND  `   INTO TABLE i_tab`                       TO fp_tab.
+* Build the WHERE clause
+  IF NOT s_field1[] IS INITIAL.
+    CLEAR l_str.
+    CONCATENATE  ` WHERE ` p_field1  'IN' 'rtab[]'
+    INTO l_str SEPARATED BY space.
+    APPEND l_str TO fp_tab.
+  ELSE.
+    APPEND '.' TO fp_tab.
+    EXIT.
+  ENDIF.
+  IF NOT s_field2[] IS INITIAL.
+    CLEAR l_str.
+    CONCATENATE `AND` p_field2  'IN' 'rtab1[]'
+    INTO l_str SEPARATED BY space.
+    APPEND l_str TO fp_tab.
+  ELSE.
+    APPEND '.' TO fp_tab.
+    EXIT.
+  ENDIF.
+  IF NOT s_field3[] IS INITIAL.
+    CLEAR l_str.
+    CONCATENATE `AND` p_field3  'IN' 'rtab2[]'
+    INTO l_str SEPARATED BY space.
+    APPEND l_str TO fp_tab.
+  ELSE.
+    APPEND '.' TO fp_tab.
+    EXIT.
+  ENDIF.
+  IF NOT s_field4[] IS INITIAL.
+    CLEAR l_str.
+    CONCATENATE `AND` p_field4  'IN' 'rtab3[]'
+    INTO l_str SEPARATED BY space.
+    APPEND l_str TO fp_tab.
+  ELSE.
+    APPEND '.' TO fp_tab.
+    EXIT.
+  ENDIF.
+  IF NOT s_field5[] IS INITIAL.
+    CLEAR l_str.
+    CONCATENATE `AND` p_field5  'IN' 'rtab4[].'
+    INTO l_str SEPARATED BY space.
+    APPEND l_str TO fp_tab.
+  ELSE.
+    APPEND '.' TO fp_tab.
+  ENDIF.
+endform.                    " f_select_bld
+*&---------------------------------------------------------------------*
+*&      Form  f_display_fld
+*&---------------------------------------------------------------------*
+*       text:Display fields selected dynamically
+*----------------------------------------------------------------------*
+*      <--FP_TAB  text:Store Whole Program
+*----------------------------------------------------------------------*
+form f_display_fld  changing fp_tab TYPE t_tab.
+* Local data declaration
+  DATA:l_str  TYPE string,
+       l_ind  TYPE sy-index,
+       l_ch   TYPE char10.
+* Build the FORM to Print the table data
+  APPEND `FORM loop_at_tab.`                       TO fp_tab.
+  APPEND `  DATA: l_wa TYPE TY_TAB,`               TO fp_tab.
+  APPEND `        LV_lines TYPE sy-tabix.`         TO fp_tab.
+  APPEND `  DATA l_heading TYPE STRING. `          TO fp_tab.
+  APPEND `  DESCRIBE table i_tab lines lv_lines. ` TO fp_tab.
+  CLEAR l_str.
+* Print the number of entries
+  APPEND 'FORMAT COLOR 5 INTENSIFIED ON.'          TO fp_tab.
+  CONCATENATE ` WRITE: `   '`No Of Entries:`'   '.'
+  INTO l_str SEPARATED BY space.
+  APPEND l_str                                     TO fp_tab.
+  CONCATENATE `  WRITE: ` 'lv_lines' '.'
+  INTO l_str SEPARATED BY space.
+  APPEND l_str                                     TO fp_tab.
+  APPEND `SKIP 1.`                                 TO fp_tab.
+  APPEND 'FORMAT COLOR OFF INTENSIFIED OFF.'       TO fp_tab.
+* Print the heading
+  CLEAR l_str.
+  LOOP AT s_field.
+    CONCATENATE l_str s_field-low
+      INTO l_str SEPARATED BY '               '.
+  ENDLOOP.
+  SHIFT l_str LEFT DELETING LEADING space.
+  CONCATENATE `l_heading = `   '`' l_str '`'   '.'
+  INTO l_str.
+  APPEND l_str                                     TO fp_tab.
+  APPEND 'FORMAT COLOR 4 INTENSIFIED ON.'          TO fp_tab.
+  CONCATENATE `  WRITE:/ `   'l_heading'   '.'
+  INTO l_str SEPARATED BY space.
+  APPEND l_str                                     TO fp_tab.
+  APPEND 'FORMAT COLOR OFF INTENSIFIED OFF.'       TO fp_tab.
+* Print the data
+  APPEND 'FORMAT COLOR 3 INTENSIFIED OFF.'         TO fp_tab.
+  APPEND `  LOOP AT i_tab INTO l_wa.`              TO fp_tab.
+  APPEND `    SKIP 1.`                             TO fp_tab.
+  l_ind = 0.
+  LOOP AT s_field.
+    MOVE l_ind TO l_ch.
+    CLEAR l_str.
+    CONCATENATE 'l_wa-' s_field-low
+    INTO l_str.
+    CONCATENATE `  WRITE:` l_ch  l_str '.'
+    INTO l_str SEPARATED BY space.
+    APPEND l_str                                   TO fp_tab.
+    l_ind = l_ind + 20.
+  ENDLOOP.
+  APPEND `  ENDLOOP.`                              TO fp_tab.
+  APPEND 'FORMAT COLOR OFF INTENSIFIED OFF.'       TO fp_tab.
+  APPEND `ENDFORM.`                                TO fp_tab.
+endform.                    " f_display_fld

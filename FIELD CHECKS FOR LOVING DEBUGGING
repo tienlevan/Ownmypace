@@ -1,0 +1,219 @@
+*&---------------------------------------------------------------------*
+*& Report ZHELP_CHECK_TABLE
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZHELP_CHECK_TABLE.
+TABLES: DD03VT.
+PARAMETERS :  FIELD RADIOBUTTON GROUP RAD USER-COMMAND COM DEFAULT 'X',
+              NAME RADIOBUTTON GROUP RAD. "MODIF ID MOD,
+
+PARAMETERS: KEY1 TYPE DD03VT-FIELDNAME MODIF ID MOD,
+            NAME1 TYPE DD03VT-SCRTEXT_L MODIF ID RAD,
+            KEY2 TYPE DD03VT-FIELDNAME MODIF ID MOD,
+            NAME2 TYPE DD03VT-SCRTEXT_L MODIF ID RAD,
+            KEY3 TYPE DD03VT-FIELDNAME MODIF ID MOD,
+            NAME3 TYPE DD03VT-SCRTEXT_L MODIF ID RAD.
+
+DATA: TAB1 TYPE STANDARD TABLE OF DD03VT,
+      WA1 TYPE DD03VT,
+      TAB2 TYPE STANDARD TABLE OF DD03VT,
+      WA2 TYPE DD03VT,
+      TAB3 TYPE STANDARD TABLE OF DD03VT,
+      WA3 TYPE DD03VT,
+      TAB4 TYPE STANDARD TABLE OF DD03VT,
+      WA4 TYPE DD03VT,
+      TAB5 TYPE STANDARD TABLE OF DD03VT.
+
+AT SELECTION-SCREEN OUTPUT.
+IF FIELD = 'X'.
+  IF KEY1 IS NOT INITIAL.
+    SELECT SCRTEXT_L FROM DD03VT INTO (NAME1) WHERE FIELDNAME = KEY1 AND DDLANGUAGE = 'EN'.
+          ENDSELECT.
+          IF SY-SUBRC <> 0.
+            MESSAGE 'Not Found Key 1, Correct Entry!' TYPE 'I'.
+            ENDIF.
+
+  IF KEY2 IS NOT INITIAL.
+    SELECT SCRTEXT_L FROM DD03VT INTO (NAME2) WHERE FIELDNAME = KEY2 AND DDLANGUAGE = 'EN'.
+          ENDSELECT.
+          IF SY-SUBRC <> 0.
+             MESSAGE 'Not Found Key 2, Correct Entry!' TYPE 'I'.
+             ENDIF.
+     ELSE.
+       CLEAR NAME2.
+       ENDIF.
+  IF KEY3 IS NOT INITIAL.
+    SELECT SCRTEXT_L FROM DD03VT INTO (NAME3) WHERE FIELDNAME = KEY3 AND DDLANGUAGE = 'EN'.
+          ENDSELECT.
+          IF SY-SUBRC <> 0.
+             MESSAGE 'Not Found Key 3, Correct Entry!' TYPE 'I'.
+             ENDIF.
+          ELSE.
+       CLEAR NAME3.
+       ENDIF.
+
+         ENDIF.
+ELSE.
+  MESSAGE 'Please start from Key 1' TYPE 'W'.
+   CLEAR NAME1.
+      ENDIF.
+
+  LOOP AT SCREEN.
+      IF SCREEN-GROUP1 = 'MOD'.
+        SCREEN-INTENSIFIED = '1'.
+        SCREEN-INPUT = '1'.
+        MODIFY SCREEN.
+      ENDIF.
+      IF SCREEN-GROUP1 = 'RAD'.
+        SCREEN-INTENSIFIED = '0'.
+        SCREEN-INPUT = '0'.
+        MODIFY SCREEN.
+      ENDIF.
+        MODIFY SCREEN.
+    ENDLOOP.
+
+ IF NAME = 'X'.
+    IF NAME1 IS NOT INITIAL.
+    SELECT FIELDNAME FROM DD03VT INTO (KEY1) WHERE SCRTEXT_L = NAME1 AND DDLANGUAGE = 'EN'.
+          ENDSELECT.
+          IF SY-SUBRC <> 0.
+            MESSAGE 'Not Found Name 1, Correct Entry!' TYPE 'I'.
+            ENDIF.
+  IF NAME2 IS NOT INITIAL.
+    SELECT FIELDNAME FROM DD03VT INTO (KEY2) WHERE SCRTEXT_L = NAME2 AND DDLANGUAGE = 'EN'.
+          ENDSELECT.
+          IF SY-SUBRC <> 0.
+             MESSAGE 'Not Found Name 2, Correct Entry!' TYPE 'I'.
+             ENDIF.
+  IF NAME3 IS NOT INITIAL.
+    SELECT FIELDNAME FROM DD03VT INTO (KEY3) WHERE SCRTEXT_L = NAME3 AND DDLANGUAGE = 'EN'.
+          ENDSELECT.
+          IF SY-SUBRC <> 0.
+             MESSAGE 'Not Found Name 3, Correct Entry!' TYPE 'I'.
+             ENDIF.
+             ENDIF.
+         ENDIF.
+ELSE.
+  CLEAR NAME1.
+  MESSAGE 'Please start from Name 1' TYPE 'W'.
+
+      ENDIF.
+
+*    WRITE ICON_PLANT AS ICON TO TEXT_001.
+*CODE TO GET DYNAMICS BASED ON THE SELECTED RADIO
+    LOOP AT SCREEN.
+      IF SCREEN-GROUP1 = 'MOD'.
+        SCREEN-INTENSIFIED = '0'.
+        SCREEN-INPUT = '0'.
+        MODIFY SCREEN.
+      ENDIF.
+      IF SCREEN-GROUP1 = 'RAD'.
+        SCREEN-INTENSIFIED = '1'.
+        SCREEN-INPUT = '1'.
+        MODIFY SCREEN.
+      ENDIF.
+        MODIFY SCREEN.
+    ENDLOOP.
+  ENDIF.
+
+START-OF-SELECTION.
+
+PERFORM GET_DATA.
+
+
+
+**********************************************************************
+FORM GET_DATA.
+
+IF NOT KEY1 IS INITIAL.
+SELECT * FROM DD03VT INTO CORRESPONDING FIELDS OF TABLE TAB1 WHERE FIELDNAME = KEY1 AND DDLANGUAGE = 'EN'
+                                                             AND ( TABCLASS = 'TRANSP' OR TABCLASS = 'VIEW').
+IF NOT KEY2 IS INITIAL.
+SELECT * FROM DD03VT INTO CORRESPONDING FIELDS OF TABLE TAB2 WHERE FIELDNAME = KEY2 AND DDLANGUAGE = 'EN' AND ( TABCLASS = 'TRANSP' OR TABCLASS = 'VIEW').
+LOOP AT TAB1 INTO WA1.
+  READ TABLE TAB2 WITH KEY TABNAME = WA1-TABNAME INTO WA2.
+  IF SY-SUBRC = 0.
+  APPEND WA2 TO TAB4.
+  ENDIF.
+ENDLOOP.
+IF KEY3 IS NOT INITIAL.
+SELECT * FROM DD03VT INTO TABLE TAB3 WHERE FIELDNAME = KEY3 AND DDLANGUAGE = 'EN' AND ( TABCLASS = 'TRANSP' OR TABCLASS = 'VIEW').
+LOOP AT TAB4 INTO WA4.
+  READ TABLE TAB3 WITH KEY TABNAME = WA4-TABNAME INTO WA3.
+  IF SY-SUBRC = 0.
+  APPEND WA3 TO TAB5.
+  ENDIF.
+ENDLOOP.
+IF TAB5 IS NOT INITIAL.
+PERFORM DISPLAY_02.
+ELSE.
+MESSAGE 'No combination like this, check field again!' TYPE 'I'.
+CALL SELECTION-SCREEN 1000.
+ENDIF.
+ENDIF.
+IF TAB4 IS NOT INITIAL.
+PERFORM DISPLAY_01.
+ELSE.
+MESSAGE 'No combination like this, check field again!' TYPE 'I'.
+CALL SELECTION-SCREEN 1000.
+ENDIF.
+ENDIF.
+PERFORM display_03.
+ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  DISPALY_01
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM DISPLAY_01 .
+ "FALV creation with only table passed
+  DATA(FALV) = ZCL_FALV=>CREATE( CHANGING CT_TABLE = TAB4 ).
+
+  "Add title variable
+  FALV->TITLE_V1 = 'Common Table F1+F2'.
+
+  "Display full screen grid
+  FALV->DISPLAY( ).
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_02
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM DISPLAY_02 .
+"FALV creation with only table passed
+  DATA(FALV1) = ZCL_FALV=>CREATE( CHANGING CT_TABLE = TAB5 ).
+
+  "Add title variable
+  FALV1->TITLE_V1 = 'Common Table F1+F2+F3'.
+
+  "Display full screen grid
+  FALV1->DISPLAY( ).
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_03
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM DISPLAY_03 .
+"FALV creation with only table passed
+  DATA(FALV2) = ZCL_FALV=>CREATE( CHANGING CT_TABLE = TAB1 ).
+
+  "Add title variable
+  FALV2->TITLE_V1 = 'Common Table 1F'.
+
+  "Display full screen grid
+  FALV2->DISPLAY( ).
+ENDFORM.
