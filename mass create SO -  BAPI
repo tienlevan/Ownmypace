@@ -1,0 +1,279 @@
+*&---------------------------------------------------------------------*
+*& Report ZSALES_MASSS0
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZSALES_MASSS0.
+
+TYPES : BEGIN OF TY_MAIN,
+        F1(4),
+        F2(10),
+        F3(20),
+        F4(10),
+        F5(10),
+        F6(10),
+        F7(10),
+  END OF TY_MAIN.
+
+TYPES : BEGIN OF TY_HEAD,
+       SALESDOCUMENT TYPE BAPIVBELN-VBELN,
+       DOC_TYPE TYPE BAPISDHD1-DOC_TYPE,
+       SALES_ORG TYPE BAPISDHD1-SALES_ORG,
+       DISTR_CHAN TYPE BAPISDHD1-DISTR_CHAN,
+       DIVISION TYPE BAPISDHD1-DIVISION,
+       SOLD_TO TYPE BAPIPARNR-PARTN_NUMB,
+       SHIP_TO TYPE BAPIPARNR-PARTN_NUMB,
+  END OF TY_HEAD.
+
+TYPES :BEGIN OF TY_ITEM,
+  SALESDOCUMENT TYPE BAPIVBELN-VBELN,
+  ITM_NUMBER TYPE BAPISDITM-ITM_NUMBER,
+  MATERIAL TYPE BAPISDITM-MATERIAL,
+  PLANT TYPE BAPISDITM-PLANT,
+  TARGET_QTY TYPE BAPISDITM-TARGET_QTY,
+*  sched_line type ETENR,
+  END OF TY_ITEM.
+
+DATA :IT_ORDER_ITEM_IN TYPE BAPISDITM OCCURS 0 WITH HEADER LINE,
+      IT_ORDER_ITEM_INX TYPE BAPISDITMX OCCURS 0 WITH HEADER LINE,
+      IT_PARTNERS TYPE BAPIPARNR OCCURS 0 WITH HEADER LINE ,
+      IT_RETURN TYPE BAPIRET2 OCCURS 0 WITH HEADER LINE,
+      IT_ORDER_SCHEDULES_IN TYPE BAPISCHDL OCCURS 0 WITH HEADER LINE,
+      IT_ORDER_SCHEDULES_INX TYPE BAPISCHDLX OCCURS 0 WITH HEADER LINE,
+      IT_MAIN TYPE TY_MAIN OCCURS 0 WITH HEADER LINE ,
+      IT_MAIN1 TYPE TY_MAIN OCCURS 0 WITH HEADER LINE,
+      IT_HEAD TYPE TY_HEAD OCCURS 0 WITH HEADER LINE,
+      IT_ITEM TYPE TY_ITEM OCCURS 0 WITH HEADER LINE.
+
+PARAMETERS : UFILE TYPE RLGRAP-FILENAME.
+DATA:
+      WA_ORDER_HEADER_IN LIKE BAPISDHD1,
+      WA_ORDER_HEADER_INX LIKE BAPISDHD1X,
+      C_VBELN TYPE VBAK-VBELN,
+      MESSAGE_TEXT_OUTPUT TYPE NATXT.
+
+
+  AT SELECTION-SCREEN ON VALUE-REQUEST FOR UFILE.
+
+CALL FUNCTION 'KD_GET_FILENAME_ON_F4'
+* EXPORTING
+*   PROGRAM_NAME        = SYST-REPID
+*   DYNPRO_NUMBER       = SYST-DYNNR
+*   FIELD_NAME          = ' '
+*   STATIC              = ' '
+*   MASK                = ' '
+*   FILEOPERATION       = 'R'
+*   PATH                =
+CHANGING
+FILE_NAME           = UFILE
+*   LOCATION_FLAG       = 'P'
+* EXCEPTIONS
+*   MASK_TOO_LONG       = 1
+*   OTHERS              = 2
+.
+IF SY-SUBRC <> 0.
+
+MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+ENDIF.
+
+START-OF-SELECTION.
+
+PERFORM CONVERT_EXCEL.
+
+  LOOP AT IT_MAIN .
+    MOVE-CORRESPONDING IT_MAIN TO  IT_MAIN1.
+    AT NEW F1.
+      IT_HEAD-SALESDOCUMENT = IT_MAIN1-F1.
+      IT_HEAD-DOC_TYPE = IT_MAIN1-F2.
+      IT_HEAD-SALES_ORG = IT_MAIN1-F3.
+      IT_HEAD-DISTR_CHAN = IT_MAIN1-F4.
+      IT_HEAD-DIVISION = IT_MAIN1-F5.
+      IT_HEAD-SOLD_TO = IT_MAIN1-F6.
+      IT_HEAD-SHIP_TO = IT_MAIN1-F7.
+      APPEND IT_HEAD.
+      CONTINUE.
+    ENDAT.
+    IT_ITEM-SALESDOCUMENT = IT_HEAD-SALESDOCUMENT.
+    IT_ITEM-ITM_NUMBER = IT_MAIN1-F2.
+    IT_ITEM-MATERIAL = IT_MAIN1-F3.
+    IT_ITEM-PLANT = IT_MAIN1-F4.
+    IT_ITEM-TARGET_QTY = IT_MAIN1-F5.
+*    it_item-sched_line =  it_main1-f6.
+
+    APPEND IT_ITEM.
+  ENDLOOP.
+
+  LOOP AT IT_HEAD.
+    WA_ORDER_HEADER_IN-DOC_TYPE = IT_HEAD-DOC_TYPE.
+    WA_ORDER_HEADER_IN-SALES_ORG = IT_HEAD-SALES_ORG.
+    WA_ORDER_HEADER_IN-DISTR_CHAN = IT_HEAD-DISTR_CHAN.
+    WA_ORDER_HEADER_IN-DIVISION = IT_HEAD-DIVISION.
+
+    IT_PARTNERS-PARTN_ROLE = 'AG'.
+    IT_PARTNERS-PARTN_NUMB = IT_HEAD-SOLD_TO.
+    APPEND IT_PARTNERS.
+
+    IT_PARTNERS-PARTN_ROLE = 'WE'.
+    IT_PARTNERS-PARTN_NUMB = IT_HEAD-SHIP_TO.
+    APPEND IT_PARTNERS.
+
+    WA_ORDER_HEADER_INX-UPDATEFLAG = 'I'.
+    WA_ORDER_HEADER_INX-DOC_TYPE = 'X'.
+    WA_ORDER_HEADER_INX-SALES_ORG = 'X'.
+    WA_ORDER_HEADER_INX-DISTR_CHAN = 'X'.
+    WA_ORDER_HEADER_INX-DIVISION = 'X'.
+
+    LOOP AT IT_ITEM WHERE SALESDOCUMENT = IT_HEAD-SALESDOCUMENT.
+      IT_ORDER_ITEM_IN-ITM_NUMBER = IT_ITEM-ITM_NUMBER.
+      IT_ORDER_ITEM_IN-MATERIAL = IT_ITEM-MATERIAL.
+      IT_ORDER_ITEM_IN-TARGET_QTY = IT_ITEM-TARGET_QTY.
+*      it_order_item_in-c = it_item-sched_line.
+      IT_ORDER_ITEM_IN-PLANT = IT_ITEM-PLANT.
+      APPEND IT_ORDER_ITEM_IN.
+
+      IT_ORDER_ITEM_INX-ITM_NUMBER = IT_ITEM-ITM_NUMBER.
+      IT_ORDER_ITEM_INX-UPDATEFLAG ='I'.
+      IT_ORDER_ITEM_INX-MATERIAL = 'X'.
+      IT_ORDER_ITEM_INX-TARGET_QTY = 'X'.
+*      it_order_item_inx-sched_line = 'X'.
+      IT_ORDER_ITEM_INX-PLANT = 'X'.
+      APPEND IT_ORDER_ITEM_INX.
+
+      IT_ORDER_SCHEDULES_IN-ITM_NUMBER =  IT_ORDER_ITEM_IN-ITM_NUMBER.
+      IT_ORDER_SCHEDULES_IN-REQ_QTY = IT_ORDER_ITEM_IN-TARGET_QTY.
+      APPEND IT_ORDER_SCHEDULES_IN.
+
+      IT_ORDER_SCHEDULES_INX-ITM_NUMBER = IT_ORDER_ITEM_IN-ITM_NUMBER.
+      IT_ORDER_SCHEDULES_INX-REQ_QTY = 'X'.
+      APPEND IT_ORDER_SCHEDULES_INX.
+
+    ENDLOOP.
+
+
+    CALL FUNCTION 'BAPI_SALESORDER_CREATEFROMDAT2'
+      EXPORTING
+*   SALESDOCUMENTIN               =
+        ORDER_HEADER_IN               = WA_ORDER_HEADER_IN
+       ORDER_HEADER_INX              = WA_ORDER_HEADER_INX
+*   SENDER                        =
+*   BINARY_RELATIONSHIPTYPE       =
+*   INT_NUMBER_ASSIGNMENT         =
+*   BEHAVE_WHEN_ERROR             =
+*   LOGIC_SWITCH                  =
+*   TESTRUN                       =
+       CONVERT                       = 'X'
+    IMPORTING
+       SALESDOCUMENT                 = C_VBELN
+      TABLES
+       RETURN                        =  IT_RETURN[]
+       ORDER_ITEMS_IN                = IT_ORDER_ITEM_IN[]
+       ORDER_ITEMS_INX               = IT_ORDER_ITEM_INX[]
+       ORDER_PARTNERS                = IT_PARTNERS[]
+       ORDER_SCHEDULES_IN            = IT_ORDER_SCHEDULES_IN[]
+       ORDER_SCHEDULES_INX           = IT_ORDER_SCHEDULES_INX[]
+*   ORDER_CONDITIONS_IN           =
+*   ORDER_CONDITIONS_INX          =
+*   ORDER_CFGS_REF                =
+*   ORDER_CFGS_INST               =
+*   ORDER_CFGS_PART_OF            =
+*   ORDER_CFGS_VALUE              =
+*   ORDER_CFGS_BLOB               =
+*   ORDER_CFGS_VK                 =
+*   ORDER_CFGS_REFINST            =
+*   ORDER_CCARD                   =
+*   ORDER_TEXT                    =
+*   ORDER_KEYS                    =
+*   EXTENSIONIN                   =
+*   PARTNERADDRESSES              =
+              .
+
+
+*LOOP AT it_return where type eq 'E' or type eq 'A'.
+*  message : it_return-message type 'S'.
+*exit.
+*endloop.
+*IF sy-subrc ne 0.
+*
+*  CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+*   EXPORTING
+*     WAIT          = 'X'
+**   IMPORTING
+**     RETURN        =
+*            .
+*
+
+    READ TABLE IT_RETURN WITH KEY TYPE = 'E'.
+    IF SY-SUBRC EQ 0.
+      CALL FUNCTION 'MESSAGE_TEXT_BUILD'
+        EXPORTING
+          MSGID               = IT_RETURN-ID
+          MSGNR               = IT_RETURN-NUMBER
+          MSGV1               = IT_RETURN-MESSAGE_V1
+          MSGV2               = IT_RETURN-MESSAGE_V2
+          MSGV3               = IT_RETURN-MESSAGE_V3
+          MSGV4               = IT_RETURN-MESSAGE_V4
+        IMPORTING
+          MESSAGE_TEXT_OUTPUT = MESSAGE_TEXT_OUTPUT.
+      WRITE :IT_HEAD-SALESDOCUMENT,':',MESSAGE_TEXT_OUTPUT.
+    ELSE.
+       CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+   EXPORTING
+     WAIT          = 'X'
+*   IMPORTING
+*     RETURN        =
+            .
+*data :lineno type sy-linno value 0.
+*      lineno = lineno + 1.
+*      sy-linno = lineno.
+*      skip.
+WRITE:/5 'SO', C_VBELN, 'is created successfully by',SY-UNAME, 'for Sale no', IT_HEAD-SALESDOCUMENT.
+  skip 1.
+*SELECT * FROM VBAK INTO CORRESPONDING FIELDS OF RESULT WHERE VBELN = C_VBELN.
+*  ENDSELECT.
+*  APPEND RESULT TO RESULT1.
+*
+    ENDIF.
+
+
+    CLEAR :WA_ORDER_HEADER_IN,WA_ORDER_HEADER_INX,IT_ORDER_ITEM_IN[],IT_ORDER_ITEM_INX[],IT_HEAD,
+            IT_ORDER_SCHEDULES_IN[],IT_ORDER_SCHEDULES_INX[].
+  ENDLOOP.
+
+*PERFORM F_RESULT.
+
+*&---------------------------------------------------------------------*
+*&      Form  CONVERT_EXCEL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM CONVERT_EXCEL .
+DATA LT_RAW_DATA  TYPE TRUXS_T_TEXT_DATA.
+
+CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+EXPORTING
+*     I_FIELD_SEPERATOR    =
+I_LINE_HEADER        = 'X'
+I_TAB_RAW_DATA       = LT_RAW_DATA
+I_FILENAME           = UFILE
+TABLES
+I_TAB_CONVERTED_DATA = IT_MAIN
+
+EXCEPTIONS
+CONVERSION_FAILED    = 1
+OTHERS               = 2.
+IF SY-SUBRC <> 0.
+
+MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+
+WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+ENDIF.
+          .
+IF LINES( IT_MAIN ) = 0.
+ MESSAGE 'File with no line!' TYPE 'E'. "No Data Retrieved
+ EXIT.
+ENDIF.
+ENDFORM.

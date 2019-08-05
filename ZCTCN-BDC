@@ -1,0 +1,695 @@
+REPORT ZHR_BDC_CNREASSIN
+       NO STANDARD PAGE HEADING LINE-SIZE 255 MESSAGE-ID 0K.
+TABLES: ZSRCHLP_V.
+
+PARAMETERS :  PA RADIOBUTTON GROUP RAD USER-COMMAND COM DEFAULT 'X'. "MODIF ID MOD,
+SELECTION-SCREEN BEGIN OF BLOCK BLK1 WITH FRAME TITLE TEXT-001.
+PARAMETERS: POSITION TYPE ZSRCHLP_V-PLSTX MODIF ID MOD,
+            ORGID TYPE ZSRCHLP_V-ORGTX MODIF ID MOD,
+            DATE TYPE BEGDA OBLIGATORY MODIF ID MOD DEFAULT SY-DATUM,
+            POSNUM TYPE ZSRCHLP_V-PLANS MODIF ID MOD.
+SELECT-OPTIONS: PERNO FOR ZSRCHLP_V-PERNR NO INTERVALS MODIF ID MOD.
+SELECTION-SCREEN END OF BLOCK BLK1.
+
+PARAMETERS:PB RADIOBUTTON GROUP RAD . "MODIF ID RAD.
+SELECTION-SCREEN BEGIN OF BLOCK BLK2 WITH FRAME TITLE TEXT-002.
+PARAMETERS: UFILE LIKE RLGRAP-FILENAME MEMORY ID YSM MODIF ID RAD ,
+            MODE LIKE CTU_PARAMS-DISMODE OBLIGATORY DEFAULT 'N' MODIF ID RAD,
+            LOG LIKE SY-UNAME OBLIGATORY DEFAULT 'DN-PP05' MODIF ID RAD.
+SELECTION-SCREEN END OF BLOCK BLK2.
+
+DATA: BEGIN OF V_BANK,
+      PERNR TYPE PERNR,
+      BEGDA TYPE BEGDA,
+*      MASSN type MASSN,
+*      MASSG type MASSG,
+      PLANS TYPE PLANS,
+*      WERKS type WERKS,
+*      PERSG type PERSG,
+*      PERSK type PERSK,
+*      BTRTL type BTRTL,
+*      GSBER type GSBER,
+      ICON TYPE ICON_D,
+      MESSAGE TYPE NATXT,
+  END OF V_BANK.
+
+
+  DATA: VT_BANK LIKE STANDARD TABLE OF V_BANK,
+        MAIN_FL   TYPE IBIPPARMS-PATH. "to select file from presentation server
+
+DATA: BDCDATA LIKE BDCDATA    OCCURS 0 WITH HEADER LINE.
+*       messages of call transaction
+DATA: MESSTAB LIKE BDCMSGCOLL OCCURS 0 WITH HEADER LINE,
+      MESSWA LIKE LINE OF MESSTAB.
+
+DATA: "MODE LIKE CTU_PARAMS-DISMODE VALUE 'N',
+      CUPDATE LIKE CTU_PARAMS-UPDMODE VALUE 'L'.
+*Covert date
+ DATA: LV_DATE(2) TYPE C,
+         LV_MONTH(2) TYPE C,
+         LV_YEAR(4) TYPE C,
+         LV_BEGDA(10) TYPE C.
+*Help file
+
+ DATA: T_SIGNAT LIKE BAPISIGNAT OCCURS 0 WITH HEADER LINE,
+      T_COMPON LIKE BAPICOMPON OCCURS 0 WITH HEADER LINE,
+      V_DOCCNT TYPE CHAR08, "bds_dcount,
+      V_CHOICE TYPE CHAR300,
+      V_ANSWER TYPE C.
+
+*DATA: GV_SUCCESS TYPE I,
+*     GV_ERROR   TYPE I." FOR CHECK NUMBER OF ENTRY
+*— Declaration for factory ALV
+DATA: GR_TABLE TYPE REF TO CL_SALV_TABLE,
+      FUNCTIONS TYPE REF TO CL_SALV_FUNCTIONS_LIST,
+      COLUMNS_ITEM TYPE REF TO CL_SALV_COLUMN,
+      COLUMNS TYPE REF TO CL_SALV_COLUMNS_TABLE,
+      COLUMN TYPE REF TO CL_SALV_COLUMN_TABLE,
+      LAYOUT_REF TYPE REF TO CL_SALV_LAYOUT, " for layout management
+      LAYOUT_KEY TYPE SALV_S_LAYOUT_KEY," for layout management
+      LR_HEADER TYPE REF TO CL_SALV_FORM_HEADER_INFO." For header edit
+
+* END OF DO NOT CHANGE*************************************
+**EVENT ON SELECTION SCREEN FOR OUTPUT DISPLAY
+AT SELECTION-SCREEN OUTPUT.
+* Set the BUTTON Text and Create ICON
+  SET PF-STATUS 'ZPFSTATUS'.
+IF PA = 'X'.
+SELECT PLANS FROM ZSRCHLP_V INTO (POSNUM) WHERE ORGTX = ORGID AND PLSTX = POSITION.
+          ENDSELECT.
+IF SY-SUBRC <> 0.
+MESSAGE TEXT-003 TYPE 'I'.
+ENDIF.
+*    WRITE ICON_PLANT AS ICON TO TEXT_001.
+*CODE TO GET DYNAMICS BASED ON THE SELECTED RADIO
+    LOOP AT SCREEN.
+      IF SCREEN-GROUP1 = 'MOD'.
+        SCREEN-INTENSIFIED = '1'.
+        SCREEN-INPUT = '1'.
+        MODIFY SCREEN.
+      ENDIF.
+      IF SCREEN-GROUP1 = 'RAD'.
+        SCREEN-INTENSIFIED = '0'.
+        SCREEN-INPUT = '0'.
+        MODIFY SCREEN.
+      ENDIF.
+        MODIFY SCREEN.
+    ENDLOOP.
+  ENDIF.
+
+ IF PB = 'X'.
+*    WRITE ICON_PLANT AS ICON TO TEXT_001.
+*CODE TO GET DYNAMICS BASED ON THE SELECTED RADIO
+    LOOP AT SCREEN.
+      IF SCREEN-GROUP1 = 'MOD'.
+        SCREEN-INTENSIFIED = '0'.
+        SCREEN-INPUT = '0'.
+        MODIFY SCREEN.
+      ENDIF.
+      IF SCREEN-GROUP1 = 'RAD'.
+        SCREEN-INTENSIFIED = '1'.
+        SCREEN-INPUT = '1'.
+        MODIFY SCREEN.
+      ENDIF.
+        MODIFY SCREEN.
+    ENDLOOP.
+  ENDIF.
+**********************************************************************
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR UFILE.
+
+CALL FUNCTION 'KD_GET_FILENAME_ON_F4'
+* EXPORTING
+*   PROGRAM_NAME        = SYST-REPID
+*   DYNPRO_NUMBER       = SYST-DYNNR
+*   FIELD_NAME          = ' '
+*   STATIC              = ' '
+*   MASK                = ' '
+*   FILEOPERATION       = 'R'
+*   PATH                =
+CHANGING
+FILE_NAME           = UFILE
+*   LOCATION_FLAG       = 'P'
+* EXCEPTIONS
+*   MASK_TOO_LONG       = 1
+*   OTHERS              = 2
+.
+IF SY-SUBRC <> 0.
+
+MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+ENDIF.
+
+***********************************************
+* If the push button is clicked call the HELP Files
+AT SELECTION-SCREEN.
+  CASE SY-UCOMM.
+
+   WHEN 'HELP'.
+*     * Clear and Refresh
+      REFRESH: T_SIGNAT,
+               T_COMPON.
+
+      CLEAR: V_CHOICE, V_ANSWER, V_DOCCNT.
+
+* Call the program to process HELP Files
+* Read document details
+      CALL FUNCTION 'BDS_BUSINESSDOCUMENT_GET_URL'
+        EXPORTING
+*   LOGICAL_SYSTEM                   =
+          CLASSNAME                        = 'PICTURES'
+          CLASSTYPE                        = 'OT'
+          CLIENT                           = SY-MANDT
+          OBJECT_KEY                       = 'ZBDS_TEST_DOCUMENTS'
+          URL_LIFETIME                     = 'T'
+*   STANDARD_URL_ONLY                =
+*   DATA_PROVIDER_URL_ONLY           =
+*   WEB_APPLIC_SERVER_URL_ONLY       =
+*   URL_USED_AT                      =
+*   SELECTED_INDEX                   =
+        TABLES
+*   URIS                             =
+          SIGNATURE                        = T_SIGNAT
+          COMPONENTS                       = T_COMPON
+        EXCEPTIONS
+          NOTHING_FOUND                    = 1
+          PARAMETER_ERROR                  = 2
+          NOT_ALLOWED                      = 3
+          ERROR_KPRO                       = 4
+          INTERNAL_ERROR                   = 5
+          NOT_AUTHORIZED                   = 6
+          OTHERS                           = 7
+                .
+      IF SY-SUBRC <> 0.
+*        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+*                WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+
+      IF SY-SUBRC = 0.
+
+* Display the POP UP with all document information
+        CALL FUNCTION 'POPUP_WITH_TABLE'
+          EXPORTING
+            ENDPOS_COL   = '80'
+            ENDPOS_ROW   = '10'
+            STARTPOS_COL = '4'
+            STARTPOS_ROW = '5'
+            TITLETEXT    = 'CLICK THE HELP FILE TO OPEN'
+          IMPORTING
+            CHOICE       = V_CHOICE
+          TABLES
+            VALUETAB     = T_COMPON
+          EXCEPTIONS
+            BREAK_OFF    = 1
+            OTHERS       = 2.
+        IF SY-SUBRC <> 0.
+*          MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+*                  WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+
+          MESSAGE S000 WITH 'USER CANCELLED PROCESSING!'.
+          SUBMIT ZHR_BDC_CNREASSIN VIA SELECTION-SCREEN. " Necessary since on some cases after a BDS Call the program tends to hang
+
+        ELSE.
+
+          IF V_CHOICE IS INITIAL.
+
+            MESSAGE S000 WITH 'USER CANCELLED PROCESSING!'.
+            SUBMIT ZBDS_TEST_DOCUMENTS VIA SELECTION-SCREEN. " Necessary since on some cases after a BDS Call the program tends to hang
+
+          ELSE.
+
+            MESSAGE I000 WITH 'OPENNING SELECTED FILE!' V_CHOICE+16(255).
+
+          ENDIF.
+
+        ENDIF.
+
+* Process data
+        V_DOCCNT = V_CHOICE.
+        SORT T_SIGNAT BY DOC_COUNT.
+        READ TABLE T_SIGNAT WITH KEY DOC_COUNT = V_DOCCNT.
+
+* Open the selected document
+        CALL FUNCTION 'BDS_DOCUMENT_DISPLAY'
+          EXPORTING
+            CLIENT                = SY-MANDT
+            DOC_ID                = T_SIGNAT-DOC_ID
+*   TABLES
+*     SIGNATURE             =
+          EXCEPTIONS
+            NOTHING_FOUND         = 1
+            PARAMETER_ERROR       = 2
+            NOT_ALLOWED           = 3
+            ERROR_KPRO            = 4
+            INTERNAL_ERROR        = 5
+            NOT_AUTHORIZED        = 6
+            OTHERS                = 7
+                  .
+        IF SY-SUBRC <> 0.
+*          MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+*                  WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+        ENDIF.
+
+* After HELP File is displayed, call back the program to prevent slowing down or hanging issues
+*       SUBMIT zbds_test_documents VIA SELECTION-SCREEN. " Necessary since on some cases after a BDS Call the program tends to hang
+
+      ENDIF.
+ ENDCASE.
+
+
+***********************************************
+START-OF-SELECTION.
+
+IF PA = 'X'.
+PERFORM SINGLE_UPLOAD.
+  ENDIF.
+
+IF PB = 'X'.
+PERFORM CONVERT_EXCEL.
+ENDIF.
+*— Create Factory ALV and display result
+PERFORM F_SHOW_RESULT.
+*ENDFORM.
+
+*TRIGGER EVENT
+
+CALL FUNCTION 'BP_EVENT_RAISE'
+  EXPORTING
+    EVENTID                      = 'ZEV_UPDATE_OM'
+ EXCEPTIONS
+   BAD_EVENTID                  = 1
+   EVENTID_DOES_NOT_EXIST       = 2
+   EVENTID_MISSING              = 3
+   RAISE_FAILED                 = 4
+   OTHERS                       = 5
+
+          .
+*For send logs file
+PERFORM SEND_ME.
+*BDC processing
+FORM BUILD_DATA.
+LOOP AT VT_BANK INTO V_BANK.
+
+PERFORM COVERT_DATE.
+
+PERFORM BDC_DYNPRO      USING 'SAPMP50A' '1000'.
+PERFORM BDC_FIELD       USING 'BDC_CURSOR'
+                              'RP50G-PERNR'.
+PERFORM BDC_FIELD       USING 'BDC_OKCODE'
+                              '/00'.
+PERFORM BDC_FIELD       USING 'RP50G-PERNR'
+                              V_BANK-PERNR.
+PERFORM BDC_FIELD       USING 'RP50G-TIMR6'
+                              'X'.
+PERFORM BDC_DYNPRO      USING 'SAPMP50A' '1000'.
+PERFORM BDC_FIELD       USING 'BDC_OKCODE'
+                              '=INS'.
+PERFORM BDC_FIELD       USING 'RP50G-PERNR'
+                              V_BANK-PERNR.
+PERFORM BDC_FIELD       USING 'BDC_CURSOR'
+                              'T582S-ITEXT(01)'.
+PERFORM BDC_FIELD       USING 'RP50G-SELEC(01)'
+                              'X'.
+PERFORM BDC_FIELD       USING 'RP50G-TIMR6'
+                              'X'.
+PERFORM BDC_DYNPRO      USING 'MP000000' '2000'.
+PERFORM BDC_FIELD       USING 'BDC_CURSOR'
+                              'T503T-PTEXT'.
+PERFORM BDC_FIELD       USING 'BDC_OKCODE'
+                              '=UPD'.
+PERFORM BDC_FIELD       USING 'P0000-BEGDA'
+                              LV_BEGDA.
+PERFORM BDC_FIELD       USING 'P0000-MASSN'
+                              '02'.
+PERFORM BDC_FIELD       USING 'P0000-MASSG'
+                              '11'.
+PERFORM BDC_FIELD       USING 'PSPAR-PLANS'
+                              V_BANK-PLANS.
+PERFORM BDC_FIELD       USING 'PSPAR-WERKS'
+                              '1000'.
+PERFORM BDC_FIELD       USING 'PSPAR-PERSG'
+                              '1'.
+PERFORM BDC_FIELD       USING 'PSPAR-PERSK'
+                              'TA'.
+PERFORM BDC_DYNPRO      USING 'MP000100' '2000'.
+PERFORM BDC_FIELD       USING 'BDC_CURSOR'
+                              'P0001-GSBER'.
+PERFORM BDC_FIELD       USING 'BDC_OKCODE'
+                              '=UPD'.
+PERFORM BDC_FIELD       USING 'P0001-BEGDA'
+                              LV_BEGDA.
+PERFORM BDC_FIELD       USING 'P0001-ENDDA'
+                              '31.12.9999'.
+PERFORM BDC_FIELD       USING 'P0001-BTRTL'
+                              '0002'.
+PERFORM BDC_FIELD       USING 'P0001-GSBER'
+                              '0003'.
+*perform bdc_field       using 'P0001-ABKRS'
+*                             'TA'.
+*perform bdc_field       using 'P0001-PLANS'
+*                              '50002043'.
+*perform bdc_field       using 'P0001-ORGEH'
+*                              '50001977'.
+*perform bdc_field       using 'P0001-VDSK1'
+*                              '1000'.
+PERFORM BDC_DYNPRO      USING 'MP000700' '2000'.
+PERFORM BDC_FIELD       USING 'BDC_OKCODE'
+                              '/EBCK'.
+PERFORM BDC_FIELD       USING 'BDC_CURSOR'
+                              'P0007-BEGDA'.
+CALL TRANSACTION 'PA30' USING BDCDATA
+                        MODE MODE
+                        UPDATE CUPDATE
+                        MESSAGES INTO MESSTAB.
+
+IF SY-SUBRC = 0.
+*GV_SUCCESS = GV_SUCCESS + 1. "for count no use
+V_BANK-ICON = ICON_CHECKED.
+V_BANK-MESSAGE = 'Successfully Import!'.
+MODIFY VT_BANK FROM V_BANK.
+ELSE.
+*GV_ERROR = GV_ERROR + 1.
+DATA: LINE TYPE I.
+V_BANK-ICON = ICON_INCOMPLETE.
+DESCRIBE TABLE MESSTAB LINES LINE.
+READ TABLE MESSTAB INTO MESSWA INDEX LINE.
+IF SY-SUBRC = 0.
+SELECT SINGLE TEXT FROM T100 INTO (V_BANK-MESSAGE) WHERE SPRSL = 'EN' AND ARBGB = MESSWA-MSGID AND MSGNR = MESSWA-MSGNR.
+ENDIF.
+MODIFY VT_BANK FROM V_BANK.
+ENDIF.
+REFRESH BDCDATA.
+ENDLOOP.
+ENDFORM.
+*----------------------------------------------------------------------*
+*        Start new screen                                              *
+*----------------------------------------------------------------------*
+FORM BDC_DYNPRO USING PROGRAM DYNPRO.
+  CLEAR BDCDATA.
+  BDCDATA-PROGRAM  = PROGRAM.
+  BDCDATA-DYNPRO   = DYNPRO.
+  BDCDATA-DYNBEGIN = 'X'.
+  APPEND BDCDATA.
+ENDFORM.
+*----------------------------------------------------------------------*
+*        Insert field                                                  *
+*----------------------------------------------------------------------*
+FORM BDC_FIELD USING FNAM FVAL.
+*  IF FVAL <> NODATA.
+    CLEAR BDCDATA.
+    BDCDATA-FNAM = FNAM.
+    BDCDATA-FVAL = FVAL.
+    APPEND BDCDATA.
+*  ENDIF.
+ENDFORM.
+
+**********************************************************************
+FORM COVERT_DATE.
+   LV_DATE = V_BANK-BEGDA+6(2).
+   LV_MONTH = V_BANK-BEGDA+4(2).
+   LV_YEAR = V_BANK-BEGDA(4).
+
+CONCATENATE LV_DATE LV_MONTH LV_YEAR INTO LV_BEGDA SEPARATED BY '.'.
+ENDFORM.
+
+***************************SHOW SUMMARY REPORT*******************************************
+FORM F_SHOW_RESULT.
+
+TRY.
+CALL METHOD CL_SALV_TABLE=>FACTORY
+*EXPORTING
+*R_CONTAINER  = CC1
+*is_layout     = w_layout
+IMPORTING
+R_SALV_TABLE = GR_TABLE
+CHANGING
+T_TABLE      = VT_BANK. "Only entries which are updated successfully
+CATCH CX_SALV_MSG.
+ENDTRY.
+****************************************Get all function
+FUNCTIONS = GR_TABLE->GET_FUNCTIONS( ).
+FUNCTIONS->SET_ALL( VALUE = 'X' ).
+**************************************Change layout on column
+TRY.
+COLUMNS = GR_TABLE->GET_COLUMNS( ).
+COLUMNS->SET_OPTIMIZE( 'X' ). "FOR OPTIMIZE COLUMN
+COLUMN ?= COLUMNS->GET_COLUMN( COLUMNNAME = 'ICON' ).
+COLUMN->SET_MEDIUM_TEXT('STATUS').
+CATCH CX_SALV_NOT_FOUND.
+ENDTRY.
+**************************************Set more functions
+FUNCTIONS->SET_LAYOUT_CHANGE( 'X' ).
+FUNCTIONS->SET_LAYOUT_MAINTAIN( 'X' ).
+FUNCTIONS->SET_LAYOUT_SAVE( 'X' ).
+*************************************For save and maintain layout
+LAYOUT_REF = GR_TABLE->GET_LAYOUT( ).
+LAYOUT_KEY-REPORT = 'ZHR_BDC_CNREASSIN'.
+LAYOUT_REF->SET_KEY( LAYOUT_KEY ).
+LAYOUT_REF->SET_SAVE_RESTRICTION( '2' ).
+" equivalent to the I_SAVE parameter in
+" the method SET_TABLE_FOR_FIRST_DISPLAY
+***************************************Header Building
+CREATE OBJECT LR_HEADER
+    EXPORTING
+      TEXT    = 'RESULT SUMMARY'.       "#EC NOTEXT
+  GR_TABLE->SET_TOP_OF_LIST( LR_HEADER ).
+
+*Display ALV \Output
+GR_TABLE->DISPLAY( ).
+
+ENDFORM.                    "f_show_result
+
+FORM SEND_ME.
+*Prepare Mail Object
+DATA:  LO_SEND_REQUEST TYPE REF TO CL_BCS VALUE IS INITIAL.
+CLASS CL_BCS DEFINITION LOAD.
+TRY.
+LO_SEND_REQUEST = CL_BCS=>CREATE_PERSISTENT( ).
+CATCH CX_SEND_REQ_BCS.
+ENDTRY.
+* Message body and subject
+DATA: LO_DOCUMENT TYPE REF TO CL_DOCUMENT_BCS VALUE IS INITIAL. "document object
+DATA : I_TEXT TYPE BCSY_TEXT. "Table for body
+DATA : W_TEXT LIKE LINE OF I_TEXT. "work area for message body
+*Set body
+W_TEXT-LINE = 'This is a message log for TCODE ZCTCN detail check!'.
+APPEND W_TEXT TO I_TEXT.
+*CLEAR W_TEXT.
+*W_TEXT-LINE = ''.
+*APPEND W_TEXT TO I_TEXT.
+*CLEAR W_TEXT.
+*Create Email document
+TRY.
+LO_DOCUMENT = CL_DOCUMENT_BCS=>CREATE_DOCUMENT( "create document
+I_TYPE = 'TXT' "Type of document HTM, TXT etc
+I_TEXT =  I_TEXT "email body internal table
+I_SUBJECT = 'ZCTCN MESSLOGS' ). "email subject here p_sub input parameter
+CATCH CX_DOCUMENT_BCS.
+ENDTRY.
+* Pass the document to send request
+TRY.
+  LO_SEND_REQUEST->SET_DOCUMENT( LO_DOCUMENT ).
+CATCH CX_SEND_REQ_BCS.
+ENDTRY.
+DATA : LV_STRING TYPE STRING, "declare string
+       LV_DATA_STRING TYPE STRING, "declare string
+       LV_STRING1 TYPE STRING, "declare string
+       LV_DATA_STRING1 TYPE STRING. "declare string
+LOOP AT MESSTAB INTO MESSWA.
+    CONCATENATE MESSWA-TCODE MESSWA-DYNAME MESSWA-DYNUMB MESSWA-MSGTYP MESSWA-MSGSPRA MESSWA-MSGID MESSWA-MSGNR MESSWA-MSGV1 MESSWA-MSGV2 MESSWA-MSGV3 MESSWA-ENV MESSWA-FLDNAME INTO LV_STRING SEPARATED BY CL_ABAP_CHAR_UTILITIES=>HORIZONTAL_TAB.
+    CONCATENATE LV_DATA_STRING LV_STRING INTO LV_DATA_STRING SEPARATED BY CL_ABAP_CHAR_UTILITIES=>NEWLINE.
+    CLEAR: MESSWA, LV_STRING.
+  ENDLOOP.
+LOOP AT VT_BANK INTO V_BANK.
+CONCATENATE V_BANK-PERNR V_BANK-BEGDA V_BANK-PLANS V_BANK-ICON V_BANK-MESSAGE INTO LV_STRING1 SEPARATED BY CL_ABAP_CHAR_UTILITIES=>HORIZONTAL_TAB.
+CONCATENATE LV_DATA_STRING1 LV_STRING1 INTO LV_DATA_STRING1 SEPARATED BY CL_ABAP_CHAR_UTILITIES=>NEWLINE.
+    CLEAR: MESSWA, LV_STRING1.
+ENDLOOP.
+
+DATA LV_XSTRING TYPE XSTRING .
+**Convert string to xstring
+  CALL FUNCTION 'HR_KR_STRING_TO_XSTRING'
+    EXPORTING
+*     codepage_to      = '8300'
+      UNICODE_STRING   = LV_DATA_STRING
+*     OUT_LEN          =
+    IMPORTING
+      XSTRING_STREAM   = LV_XSTRING
+    EXCEPTIONS
+      INVALID_CODEPAGE = 1
+      INVALID_STRING   = 2
+      OTHERS           = 3.
+  IF SY-SUBRC <> 0.
+    IF SY-SUBRC = 1 .
+
+    ELSEIF SY-SUBRC = 2 .
+      WRITE:/ 'invalid string ' .
+    ENDIF.
+  ENDIF.
+
+DATA LV_XSTRING1 TYPE XSTRING .
+**Convert string to xstring
+  CALL FUNCTION 'HR_KR_STRING_TO_XSTRING'
+    EXPORTING
+*     codepage_to      = '8300'
+      UNICODE_STRING   = LV_DATA_STRING1
+*     OUT_LEN          =
+    IMPORTING
+      XSTRING_STREAM   = LV_XSTRING1
+    EXCEPTIONS
+      INVALID_CODEPAGE = 1
+      INVALID_STRING   = 2
+      OTHERS           = 3.
+  IF SY-SUBRC <> 0.
+    IF SY-SUBRC = 1 .
+
+    ELSEIF SY-SUBRC = 2 .
+      WRITE:/ 'invalid string ' .
+    ENDIF.
+  ENDIF.
+
+ DATA: LIT_BINARY_CONTENT TYPE SOLIX_TAB.
+***Xstring to binary
+  CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+    EXPORTING
+      BUFFER     = LV_XSTRING
+    TABLES
+      BINARY_TAB = LIT_BINARY_CONTENT.
+
+ DATA: LIT_BINARY_CONTENT1 TYPE SOLIX_TAB.
+***Xstring to binary
+  CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+    EXPORTING
+      BUFFER     = LV_XSTRING1
+    TABLES
+      BINARY_TAB = LIT_BINARY_CONTENT1.
+
+DATA  L_ATTSUBJECT   TYPE SOOD-OBJDES.
+**add attachment name
+  CLEAR L_ATTSUBJECT .
+  CONCATENATE 'ZCTCN Log Of' SY-DATUM INTO L_ATTSUBJECT SEPARATED BY SPACE.
+* Create Attachment
+  TRY.
+    LO_DOCUMENT->ADD_ATTACHMENT( EXPORTING
+                                    I_ATTACHMENT_TYPE = 'XLS'
+                                    I_ATTACHMENT_SUBJECT = L_ATTSUBJECT
+                                    I_ATT_CONTENT_HEX = LIT_BINARY_CONTENT  ).
+          CATCH cx_document_bcs.
+
+
+  ENDTRY.
+
+DATA  L_ATTSUBJECT1   TYPE SOOD-OBJDES.
+**add attachment name
+  CLEAR L_ATTSUBJECT1 .
+  CONCATENATE 'Result Summary Of ' SY-DATUM INTO L_ATTSUBJECT1 SEPARATED BY SPACE.
+* Create Attachment
+  TRY.
+    LO_DOCUMENT->ADD_ATTACHMENT( EXPORTING
+                                    I_ATTACHMENT_TYPE = 'XLS'
+                                    I_ATTACHMENT_SUBJECT = L_ATTSUBJECT1
+                                    I_ATT_CONTENT_HEX = LIT_BINARY_CONTENT1  ).
+          CATCH cx_document_bcs.
+
+
+  ENDTRY.
+*Set Sender
+DATA: LO_SENDER TYPE REF TO IF_SENDER_BCS VALUE IS INITIAL.
+TRY.
+  LO_SENDER = CL_SAPUSER_BCS=>CREATE( SY-UNAME ). "sender is the logged in user
+* Set sender to send request
+  LO_SEND_REQUEST->SET_SENDER(
+  EXPORTING
+  I_SENDER = LO_SENDER ).
+    CATCH CX_ADDRESS_BCS.
+    CATCH CX_SEND_REQ_BCS.
+****Catch exception here
+ENDTRY.
+
+**Set recipient
+DATA: LO_RECIPIENT TYPE REF TO IF_RECIPIENT_BCS VALUE IS INITIAL.
+TRY.
+LO_RECIPIENT = CL_SAPUSER_BCS=>CREATE( LOG ). "Here Recipient is email input p_email
+ CATCH CX_ADDRESS_BCS."INTO BCS_EXCEPTION
+ENDTRY.
+TRY.
+  LO_SEND_REQUEST->ADD_RECIPIENT(
+      EXPORTING
+      I_RECIPIENT = LO_RECIPIENT
+      I_EXPRESS = '' ).
+  CATCH CX_SEND_REQ_BCS.
+  CATCH CX_ADDRESS_BCS."INTO BCS_EXCEPTION .
+**Catch exception here
+ENDTRY.
+
+*Set immediate sending
+TRY.
+  CALL METHOD LO_SEND_REQUEST->SET_SEND_IMMEDIATELY
+    EXPORTING
+      I_SEND_IMMEDIATELY = 'X'.
+    CATCH CX_SEND_REQ_BCS .
+**Catch exception here
+ENDTRY.
+
+TRY.
+** Send email
+  LO_SEND_REQUEST->SEND(
+  EXPORTING
+  I_WITH_ERROR_SCREEN = 'X' ).
+  COMMIT WORK.
+*  IF SY-SUBRC = 0.
+*    WRITE :/ 'Mail sent successfully'.
+*  ENDIF.
+    CATCH CX_SEND_REQ_BCS. "INTO BCS_EXCEPTION .
+*catch exception here
+ENDTRY.
+ENDFORM.
+
+FORM CONVERT_EXCEL.
+DATA LT_RAW_DATA  TYPE TRUXS_T_TEXT_DATA.
+
+CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+EXPORTING
+*     I_FIELD_SEPERATOR    =
+I_LINE_HEADER        = 'X'
+I_TAB_RAW_DATA       = LT_RAW_DATA
+I_FILENAME           = UFILE
+TABLES
+I_TAB_CONVERTED_DATA = VT_BANK
+
+EXCEPTIONS
+CONVERSION_FAILED    = 1
+OTHERS               = 2.
+IF SY-SUBRC <> 0.
+
+MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+
+WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+ELSE.
+PERFORM BUILD_DATA.
+ENDIF.
+          .
+IF LINES( VT_BANK ) = 0.
+ MESSAGE 'File with no line!' TYPE 'E'. "No Data Retrieved
+ EXIT.
+ENDIF.
+ENDFORM.
+**********************************************************************
+FORM SINGLE_UPLOAD.
+IF POSNUM IS INITIAL.
+MESSAGE 'Ph#i #i#n thông tin v# trí. #i#n V# trí và T# sau #ó ENTER ## l#y thông tin v# trí!' TYPE 'E'.
+ENDIF.
+LOOP AT PERNO.
+  V_BANK-PERNR = PERNO-LOW.
+APPEND V_BANK TO VT_BANK.
+ENDLOOP.
+IF SY-SUBRC = 0.
+LOOP AT VT_BANK INTO V_BANK.
+V_BANK-PLANS = POSNUM.
+V_BANK-BEGDA = DATE.
+MODIFY VT_BANK FROM V_BANK.
+ENDLOOP.
+ELSE.
+  MESSAGE 'Please specify at leat one person for assignment!' TYPE 'E'.
+ENDIF.
+PERFORM BUILD_DATA.
+ENDFORM.

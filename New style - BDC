@@ -1,0 +1,1301 @@
+*&---------------------------------------------------------------------*
+*& Report YRRE_CCM_PAYMENTMAPPING
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT YRRE_CCM_PAYMENTMAPPING MESSAGE-ID YRRE_FI NO STANDARD PAGE HEADING..
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+TABLES: YRRE_D_POR_ROOT, BKPF, BSEG, YRRE_CCM_PRIVNC.
+
+TYPES: BEGIN OF S_PAYMENT,
+       BUKRS LIKE YRRE_D_POR_ROOT-BUKRS,
+       PURID LIKE YRRE_D_POR_ROOT-PURID,
+       CIT_MWSKZ LIKE YRRE_D_POR_ROOT-CIT_MWSKZ,
+       PSPID LIKE YRRE_D_POR_ROOT-PSPID,
+       CURR_ACT_TAX LIKE YRRE_D_POR_ROOT-CURR_ACT_TAX,
+       APPSTATUS LIKE YRRE_D_POR_ROOT-APPSTATUS,
+       PROJ_PH LIKE YRRE_D_POR_ROOT-PROJ_PH,
+       CURR_REQ LIKE YRRE_D_POR_ROOT-CURR_REQ,
+       RATES LIKE YRRE_D_POR_ROOT-RATES,
+       CONTRACTNO LIKE YRRE_D_POR_ROOT-CONTRACTNO,
+       WAERS LIKE YRRE_D_POR_ROOT-WAERS,
+       FP_EXIST LIKE YRRE_D_POR_ROOT-FP_EXIST,
+       LIFNR LIKE YRRE_D_POR_ROOT-LIFNR,
+       DAT_DUE LIKE YRRE_D_POR_ROOT-DAT_DUE,
+       DAT_ISSUE LIKE YRRE_D_POR_ROOT-DAT_ISSUE,
+       OPVID LIKE YRRE_D_POR_ROOT-OPVID,
+       PAY_TYPE LIKE YRRE_D_POR_ROOT-PAY_TYPE,
+       HKONT   TYPE BSEG-HKONT,
+       SPL_HKONT TYPE BSEG-HKONT,
+       TYPET          TYPE DDTEXT, "pay type text
+       CONTFCLASS     TYPE YRRE_D_CONT_ROOT-CONTFCLASS,
+       PAYMENT_METHOD TYPE CHAR65,
+       BANK_ACCOUNT   TYPE BANKN,
+       HBKID          TYPE HBKID,
+       HKTID          TYPE HKTID,
+       GRPID          TYPE YRRE_GROUP_ID,
+       END OF S_PAYMENT.
+
+DATA: LT_PAYMENT TYPE TABLE OF S_PAYMENT,
+      LS_PAYMENT TYPE S_PAYMENT.
+
+DATA: LT_PRIVNC TYPE TABLE OF YRRE_CCM_PRIVNC,
+      LS_PRIVNC TYPE YRRE_CCM_PRIVNC.
+
+DATA: LT_CONT_ROOT TYPE TABLE OF YRRE_D_CONT_ROOT,
+      LS_CONT_ROOT TYPE YRRE_D_CONT_ROOT.
+
+
+DATA: LT_GL_ACCTS TYPE TY_HKONT,
+      LT_DOMAINS  TYPE DD07V_TAB.
+
+DATA: CUR_RQ LIKE YRRE_D_POR_ROOT-CURR_REQ,
+      MAX_NUM LIKE YRRE_CCM_PRIVNC-PR_FI,
+      MAX_NUM2 LIKE YRRE_CCM_PRIVNC-PR_FI,
+      AVA_SUM TYPE YRRE_CCM_PRIVNC-BILLAMT_AV,
+      LV_AMT  TYPE BAPICURR-BAPICURR.
+
+FIELD-SYMBOLS <FS_PAYMENT> LIKE LS_PAYMENT .
+
+*&SPWIZARD: TYPE FOR THE DATA OF TABLECONTROL 'INVOICE_SEL'
+TYPES: BEGIN OF T_INVOICE_SEL,
+         CHECK TYPE C,
+         BILLNO LIKE YRRE_D_POR_ROOT-BILLNO,
+         BILL_EX LIKE YRRE_D_POR_ROOT-BILL_EX,
+         BILLAMT_TAX LIKE YRRE_D_POR_ROOT-BILLAMT_TAX,
+         VAT_AMT LIKE YRRE_D_POR_ROOT-VAT_AMT,
+         TAXAMT     LIKE YRRE_D_POR_ROOT-TAXAMT,
+         INV_DATE LIKE YRRE_D_POR_ROOT-INV_DATE,
+         BELNR LIKE YRRE_D_POR_ROOT-BELNR,
+         SDEP LIKE YRRE_D_POR_ROOT-SDEP,
+         CDEPT_SD LIKE YRRE_D_POR_ROOT-CDEPT_SD,
+         AVA_SUM LIKE YRRE_D_POR_ROOT-AVA_SUM,
+         CURR_FKREQ_LC LIKE YRRE_D_POR_ROOT-CURR_FKREQ_LC,
+         WAERS LIKE YRRE_D_POR_ROOT-WAERS,
+         BELNR2 LIKE YRRE_D_POR_ROOT-BELNR,
+         STATS TYPE ICON-NAME,
+         MSSG  TYPE STRING,
+       END OF T_INVOICE_SEL.
+DATA: ROW_SEL TYPE C.
+
+*&SPWIZARD: INTERNAL TABLE FOR TABLECONTROL 'INVOICE_SEL'
+DATA:     G_INVOICE_SEL_ITAB   TYPE T_INVOICE_SEL OCCURS 0,
+          G_INVOICE_SEL_WA     TYPE T_INVOICE_SEL. "work area
+DATA:     G_INVOICE_SEL_COPIED.           "copy flag
+
+*&SPWIZARD: DECLARATION OF TABLECONTROL 'INVOICE_SEL' ITSELF
+CONTROLS: INVOICE_SEL TYPE TABLEVIEW USING SCREEN 0100.
+
+*&SPWIZARD: LINES OF TABLECONTROL 'INVOICE_SEL'
+DATA:     G_INVOICE_SEL_LINES  LIKE SY-LOOPC.
+
+DATA: OK_CODE TYPE SY-UCOMM,
+      OK_SAVE TYPE SY-UCOMM.
+
+DATA: BDCDATA LIKE BDCDATA    OCCURS 0 WITH HEADER LINE.
+*       messages of call transaction
+DATA: MESSTAB LIKE BDCMSGCOLL OCCURS 0 WITH HEADER LINE,
+      MESSWA LIKE LINE OF MESSTAB.
+*Covert date
+ DATA:   LV_DATE(2) TYPE C,
+         LV_MONTH(2) TYPE C,
+         LV_YEAR(4) TYPE C,
+         LV_BEGDA(10) TYPE C.
+
+START-OF-SELECTION.
+CALL SCREEN 100.
+
+MODULE STATUS_0100 OUTPUT.
+
+  SET PF-STATUS 'STATUS_100'.
+  SET TITLEBAR 'Z100'.
+
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  DISABLE_INPUT  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE DISABLE_INPUT OUTPUT.
+
+    LOOP AT SCREEN.
+
+      IF G_INVOICE_SEL_WA-CHECK = ' '.
+
+      IF SCREEN-NAME = 'G_INVOICE_SEL_WA-CURR_FKREQ_LC'.
+
+       SCREEN-INPUT = 0.
+
+      MODIFY SCREEN.
+
+      ELSE.
+
+        SCREEN-INPUT = 1.
+
+       MODIFY SCREEN.
+
+      ENDIF.
+
+      ENDIF.
+
+    ENDLOOP.
+
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  GET_DATA_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE GET_DATA_0100 OUTPUT.
+
+PERFORM GET_PAYMENT.
+
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Form  GET_PAYMENT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM GET_PAYMENT .
+
+IF YRRE_D_POR_ROOT-PURID IS NOT INITIAL.
+
+SELECT * FROM YRRE_D_POR_ROOT INTO CORRESPONDING FIELDS OF TABLE LT_PAYMENT
+         WHERE PURID = YRRE_D_POR_ROOT-PURID
+           AND DELETE = ' '
+           AND DOCTYPE = '01'.
+
+  IF SY-SUBRC = 0.
+
+     SELECT CONTRACTNO ACONTNO CONTFCLASS UKURS PAYMENT_METHOD BANK_ACCOUNT GROUP_ID INTO CORRESPONDING FIELDS OF TABLE LT_CONT_ROOT
+      FROM YRRE_D_CONT_ROOT
+      WHERE CONTRACTNO = YRRE_D_POR_ROOT-CONTRACTNO.
+
+   READ TABLE  LT_CONT_ROOT INTO  LS_CONT_ROOT WITH KEY CONTRACTNO = YRRE_D_POR_ROOT-CONTRACTNO .
+
+    LOOP AT LT_PAYMENT ASSIGNING <FS_PAYMENT>.
+
+      <FS_PAYMENT>-GRPID = LS_CONT_ROOT-GROUP_ID.
+
+* Get G/L account
+
+      YRRE_CL_DB_UTILITY=>GET_INSTANCE( )->GET_VENDOR_MASTER_DATA( EXPORTING IV_VENDOR_NO = <FS_PAYMENT>-LIFNR
+                                                                 IMPORTING ES_VENDOR_DET = DATA(LW_VENDOR_DET) ).
+
+    IF NOT LW_VENDOR_DET-AKONT IS INITIAL.
+
+      <FS_PAYMENT>-HKONT = LW_VENDOR_DET-AKONT.
+  IF 1 = 2.
+*Get special GL
+
+      DATA: LV_SP_GL_IND TYPE UMSKZ.
+
+    IF <FS_PAYMENT>-PAY_TYPE = '01' "Prepayment
+    OR <FS_PAYMENT>-PAY_TYPE = '05'."Prepayment Material
+      LV_SP_GL_IND = 'F'.
+    ELSE.
+      LV_SP_GL_IND = 'P'.
+    ENDIF.
+
+    IF LT_GL_ACCTS IS NOT INITIAL.
+      YRRE_CL_DB_UTILITY=>GET_INSTANCE( )->GET_SPECIAL_GL_ACCOUNT( EXPORTING IT_RECON_ACCOUNT = LT_GL_ACCTS
+                                                                             IV_SPL_GL_IND = LV_SP_GL_IND
+                                                                   IMPORTING ET_SPL_GL_ACCTS = DATA(LT_SPL_GL_ACCTS) ).
+    ENDIF.
+
+    READ TABLE LT_SPL_GL_ACCTS ASSIGNING FIELD-SYMBOL(<FS_S_SPL_GL_ACCTS>) WITH KEY HKONT = <FS_PAYMENT>-HKONT BINARY SEARCH.
+    IF SY-SUBRC = 0.
+      <FS_PAYMENT>-SPL_HKONT = <FS_S_SPL_GL_ACCTS>-SKONT.
+       ENDIF.
+      ENDIF.
+    ENDIF.
+
+* Get current request amount
+
+
+    SELECT * FROM YRRE_CCM_PRIVNC INTO CORRESPONDING FIELDS OF TABLE LT_PRIVNC
+      WHERE CONTRACTNO = YRRE_D_POR_ROOT-CONTRACTNO
+       AND  PURID      = YRRE_D_POR_ROOT-PURID.
+
+      IF SY-SUBRC = 0.
+
+        SORT LT_PRIVNC DESCENDING BY PR_FI.
+
+        READ TABLE LT_PRIVNC INTO LS_PRIVNC INDEX 1.
+
+        MAX_NUM = LS_PRIVNC-PR_FI.
+
+      SELECT SINGLE CURR_REQ_AV FROM YRRE_CCM_PRIVNC INTO CUR_RQ
+      WHERE PURID = YRRE_D_POR_ROOT-PURID
+      AND   CONTRACTNO = YRRE_D_POR_ROOT-CONTRACTNO
+      AND   PR_FI = MAX_NUM.
+
+      IF SY-SUBRC = 0.
+
+    <FS_PAYMENT>-CURR_REQ = CUR_RQ.
+
+      ENDIF.
+
+    ELSE.
+
+      <FS_PAYMENT>-CURR_REQ = <FS_PAYMENT>-CURR_ACT_TAX.
+
+      CLEAR LV_AMT.
+
+      ENDIF.
+
+    ENDLOOP.
+* Move data to relevant field
+
+    MOVE-CORRESPONDING <FS_PAYMENT> TO YRRE_D_POR_ROOT.
+    MOVE-CORRESPONDING <FS_PAYMENT> TO BSEG.
+
+  ELSE.
+
+    MESSAGE E646(YRRE_FI).
+
+  ENDIF.
+
+ENDIF.
+
+
+ENDFORM.
+
+
+
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE USER_COMMAND_0100 INPUT.
+CASE SY-UCOMM.
+
+  WHEN 'GETFI'.
+
+    IF YRRE_D_POR_ROOT-APPSTATUS = '40'.
+
+    PERFORM GET_FI.
+
+    ELSE.
+
+    MESSAGE I645(YRRE_FI).
+
+    ENDIF.
+
+  WHEN 'GETIVC'.
+
+    IF YRRE_D_POR_ROOT-APPSTATUS = '40'.
+
+      PERFORM GET_INVOICE.
+
+    ELSE.
+
+      MESSAGE I645(YRRE_FI).
+
+    ENDIF.
+
+  WHEN 'REFS'.
+
+    CLEAR : <FS_PAYMENT>,G_INVOICE_SEL_ITAB, YRRE_D_POR_ROOT,BSEG,YRRE_CCM_PRIVNC, G_INVOICE_SEL_COPIED, MAX_NUM2, MAX_NUM.
+
+  WHEN 'POST'.
+
+    PERFORM POST_PR.
+
+  WHEN 'PICK'.
+
+     DATA: LV_FIELD(30),
+           LV_LINE TYPE I.
+
+     GET CURSOR FIELD LV_FIELD LINE LV_LINE.
+
+     READ TABLE G_INVOICE_SEL_ITAB INTO G_INVOICE_SEL_WA INDEX LV_LINE.
+
+     IF SY-SUBRC = 0.
+
+     IF LV_FIELD = 'G_INVOICE_SEL_WA-BELNR2'.
+
+      SET PARAMETER ID: 'BLN' FIELD G_INVOICE_SEL_WA-BELNR2,
+                        'BUK' FIELD YRRE_D_POR_ROOT-BUKRS,
+                        'GJR' FIELD YRRE_D_POR_ROOT-GJAHR.
+
+      CALL TRANSACTION 'FB03' AND SKIP FIRST SCREEN.
+
+     ENDIF.
+
+     ENDIF.
+
+ WHEN 'POSTWO'.
+IF NOT YRRE_D_POR_ROOT-PSPID IS INITIAL AND YRRE_D_POR_ROOT-PSPID IS NOT INITIAL.
+
+  SUBMIT YRRE_FI_POST_PAYMENT_REQUEST WITH S_BUKRS = YRRE_D_POR_ROOT-BUKRS
+                                    WITH S_PSPID = YRRE_D_POR_ROOT-PSPID
+                                    WITH S_PURID = YRRE_D_POR_ROOT-PURID
+                                    WITH S_CONNO = YRRE_D_POR_ROOT-CONTRACTNO
+                                    VIA SELECTION-SCREEN
+                                    AND RETURN.
+
+ENDIF.
+
+
+  WHEN 'BACK' OR 'EXIT' OR 'CANCEL'.
+
+    LEAVE PROGRAM.
+
+  WHEN OTHERS.
+ENDCASE.
+ENDMODULE.
+
+**&SPWIZARD: DECLARATION OF TABLECONTROL 'INVOICE_SEL' ITSELF
+*CONTROLS: INVOICE_SEL TYPE TABLEVIEW USING SCREEN 0100.
+
+**&SPWIZARD: LINES OF TABLECONTROL 'INVOICE_SEL'
+*DATA:     G_INVOICE_SEL_LINES  LIKE SY-LOOPC.
+*
+*DATA:     OK_CODE LIKE SY-UCOMM.
+
+*&SPWIZARD: OUTPUT MODULE FOR TC 'INVOICE_SEL'. DO NOT CHANGE THIS LINE!
+*&SPWIZARD: UPDATE LINES FOR EQUIVALENT SCROLLBAR
+MODULE INVOICE_SEL_CHANGE_TC_ATTR OUTPUT.
+  DESCRIBE TABLE G_INVOICE_SEL_ITAB LINES INVOICE_SEL-LINES.
+ENDMODULE.
+
+*&SPWIZARD: OUTPUT MODULE FOR TC 'INVOICE_SEL'. DO NOT CHANGE THIS LINE!
+*&SPWIZARD: GET LINES OF TABLECONTROL
+MODULE INVOICE_SEL_GET_LINES OUTPUT.
+  G_INVOICE_SEL_LINES = SY-LOOPC.
+ENDMODULE.
+
+*&SPWIZARD: INPUT MODULE FOR TC 'INVOICE_SEL'. DO NOT CHANGE THIS LINE!
+*&SPWIZARD: MODIFY TABLE
+MODULE INVOICE_SEL_MODIFY INPUT.
+  MODIFY G_INVOICE_SEL_ITAB
+    FROM G_INVOICE_SEL_WA
+    INDEX INVOICE_SEL-CURRENT_LINE.
+ENDMODULE.
+
+*&SPWIZARD: INPUT MODULE FOR TC 'INVOICE_SEL'. DO NOT CHANGE THIS LINE!
+*&SPWIZARD: PROCESS USER COMMAND
+MODULE INVOICE_SEL_USER_COMMAND INPUT.
+  OK_CODE = SY-UCOMM.
+  PERFORM USER_OK_TC USING    'INVOICE_SEL'
+                              'G_INVOICE_SEL_ITAB'
+                              ' '
+                     CHANGING OK_CODE.
+  SY-UCOMM = OK_CODE.
+ENDMODULE.
+
+*----------------------------------------------------------------------*
+*   INCLUDE TABLECONTROL_FORMS                                         *
+*----------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*&      Form  USER_OK_TC                                               *
+*&---------------------------------------------------------------------*
+ FORM USER_OK_TC USING    P_TC_NAME TYPE DYNFNAM
+                          P_TABLE_NAME
+                          P_MARK_NAME
+                 CHANGING P_OK      LIKE SY-UCOMM.
+
+*&SPWIZARD: BEGIN OF LOCAL DATA----------------------------------------*
+   DATA: L_OK              TYPE SY-UCOMM,
+         L_OFFSET          TYPE I.
+*&SPWIZARD: END OF LOCAL DATA------------------------------------------*
+
+*&SPWIZARD: Table control specific operations                          *
+*&SPWIZARD: evaluate TC name and operations                            *
+   SEARCH P_OK FOR P_TC_NAME.
+   IF SY-SUBRC <> 0.
+     EXIT.
+   ENDIF.
+   L_OFFSET = STRLEN( P_TC_NAME ) + 1.
+   L_OK = P_OK+L_OFFSET.
+*&SPWIZARD: execute general and TC specific operations                 *
+   CASE L_OK.
+     WHEN 'INSR'.                      "insert row
+       PERFORM FCODE_INSERT_ROW USING    P_TC_NAME
+                                         P_TABLE_NAME.
+       CLEAR P_OK.
+
+     WHEN 'DELE'.                      "delete row
+       PERFORM FCODE_DELETE_ROW USING    P_TC_NAME
+                                         P_TABLE_NAME
+                                         P_MARK_NAME.
+       CLEAR P_OK.
+
+     WHEN 'P--' OR                     "top of list
+          'P-'  OR                     "previous page
+          'P+'  OR                     "next page
+          'P++'.                       "bottom of list
+       PERFORM COMPUTE_SCROLLING_IN_TC USING P_TC_NAME
+                                             L_OK.
+       CLEAR P_OK.
+*     WHEN 'L--'.                       "total left
+*       PERFORM FCODE_TOTAL_LEFT USING P_TC_NAME.
+*
+*     WHEN 'L-'.                        "column left
+*       PERFORM FCODE_COLUMN_LEFT USING P_TC_NAME.
+*
+*     WHEN 'R+'.                        "column right
+*       PERFORM FCODE_COLUMN_RIGHT USING P_TC_NAME.
+*
+*     WHEN 'R++'.                       "total right
+*       PERFORM FCODE_TOTAL_RIGHT USING P_TC_NAME.
+*
+     WHEN 'MARK'.                      "mark all filled lines
+       PERFORM FCODE_TC_MARK_LINES USING P_TC_NAME
+                                         P_TABLE_NAME
+                                         P_MARK_NAME   .
+       CLEAR P_OK.
+
+     WHEN 'DMRK'.                      "demark all filled lines
+       PERFORM FCODE_TC_DEMARK_LINES USING P_TC_NAME
+                                           P_TABLE_NAME
+                                           P_MARK_NAME .
+       CLEAR P_OK.
+
+*     WHEN 'SASCEND'   OR
+*          'SDESCEND'.                  "sort column
+*       PERFORM FCODE_SORT_TC USING P_TC_NAME
+*                                   l_ok.
+
+ENDCASE.
+
+ ENDFORM.                              " USER_OK_TC
+
+*&---------------------------------------------------------------------*
+*&      Form  FCODE_INSERT_ROW                                         *
+*&---------------------------------------------------------------------*
+ FORM FCODE_INSERT_ROW
+               USING    P_TC_NAME           TYPE DYNFNAM
+                        P_TABLE_NAME             .
+
+*&SPWIZARD: BEGIN OF LOCAL DATA----------------------------------------*
+   DATA L_LINES_NAME       LIKE FELD-NAME.
+   DATA L_SELLINE          LIKE SY-STEPL.
+   DATA L_LASTLINE         TYPE I.
+   DATA L_LINE             TYPE I.
+   DATA L_TABLE_NAME       LIKE FELD-NAME.
+   FIELD-SYMBOLS <TC>                 TYPE CXTAB_CONTROL.
+   FIELD-SYMBOLS <TABLE>              TYPE STANDARD TABLE.
+   FIELD-SYMBOLS <LINES>              TYPE I.
+*&SPWIZARD: END OF LOCAL DATA------------------------------------------*
+
+   ASSIGN (P_TC_NAME) TO <TC>.
+
+*&SPWIZARD: get the table, which belongs to the tc                     *
+   CONCATENATE P_TABLE_NAME '[]' INTO L_TABLE_NAME. "table body
+   ASSIGN (L_TABLE_NAME) TO <TABLE>.                "not headerline
+
+*&SPWIZARD: get looplines of TableControl                              *
+   CONCATENATE 'G_' P_TC_NAME '_LINES' INTO L_LINES_NAME.
+   ASSIGN (L_LINES_NAME) TO <LINES>.
+
+*&SPWIZARD: get current line                                           *
+   GET CURSOR LINE L_SELLINE.
+   IF SY-SUBRC <> 0.                   " append line to table
+     L_SELLINE = <TC>-LINES + 1.
+*&SPWIZARD: set top line                                               *
+     IF L_SELLINE > <LINES>.
+       <TC>-TOP_LINE = L_SELLINE - <LINES> + 1 .
+     ELSE.
+       <TC>-TOP_LINE = 1.
+     ENDIF.
+   ELSE.                               " insert line into table
+     L_SELLINE = <TC>-TOP_LINE + L_SELLINE - 1.
+     L_LASTLINE = <TC>-TOP_LINE + <LINES> - 1.
+   ENDIF.
+*&SPWIZARD: set new cursor line                                        *
+   L_LINE = L_SELLINE - <TC>-TOP_LINE + 1.
+
+*&SPWIZARD: insert initial line                                        *
+   INSERT INITIAL LINE INTO <TABLE> INDEX L_SELLINE.
+   <TC>-LINES = <TC>-LINES + 1.
+*&SPWIZARD: set cursor                                                 *
+   SET CURSOR LINE L_LINE.
+
+ ENDFORM.                              " FCODE_INSERT_ROW
+
+*&---------------------------------------------------------------------*
+*&      Form  FCODE_DELETE_ROW                                         *
+*&---------------------------------------------------------------------*
+ FORM FCODE_DELETE_ROW
+               USING    P_TC_NAME           TYPE DYNFNAM
+                        P_TABLE_NAME
+                        P_MARK_NAME   .
+
+*&SPWIZARD: BEGIN OF LOCAL DATA----------------------------------------*
+   DATA L_TABLE_NAME       LIKE FELD-NAME.
+
+   FIELD-SYMBOLS <TC>         TYPE CXTAB_CONTROL.
+   FIELD-SYMBOLS <TABLE>      TYPE STANDARD TABLE.
+   FIELD-SYMBOLS <WA>.
+   FIELD-SYMBOLS <MARK_FIELD>.
+*&SPWIZARD: END OF LOCAL DATA------------------------------------------*
+
+   ASSIGN (P_TC_NAME) TO <TC>.
+
+*&SPWIZARD: get the table, which belongs to the tc                     *
+   CONCATENATE P_TABLE_NAME '[]' INTO L_TABLE_NAME. "table body
+   ASSIGN (L_TABLE_NAME) TO <TABLE>.                "not headerline
+
+*&SPWIZARD: delete marked lines                                        *
+   DESCRIBE TABLE <TABLE> LINES <TC>-LINES.
+
+   LOOP AT <TABLE> ASSIGNING <WA>.
+
+*&SPWIZARD: access to the component 'FLAG' of the table header         *
+     ASSIGN COMPONENT P_MARK_NAME OF STRUCTURE <WA> TO <MARK_FIELD>.
+
+     IF <MARK_FIELD> = 'X'.
+       DELETE <TABLE> INDEX SYST-TABIX.
+       IF SY-SUBRC = 0.
+         <TC>-LINES = <TC>-LINES - 1.
+       ENDIF.
+     ENDIF.
+   ENDLOOP.
+
+ ENDFORM.                              " FCODE_DELETE_ROW
+
+*&---------------------------------------------------------------------*
+*&      Form  COMPUTE_SCROLLING_IN_TC
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_TC_NAME  name of tablecontrol
+*      -->P_OK       ok code
+*----------------------------------------------------------------------*
+ FORM COMPUTE_SCROLLING_IN_TC USING    P_TC_NAME
+                                       P_OK.
+*&SPWIZARD: BEGIN OF LOCAL DATA----------------------------------------*
+   DATA L_TC_NEW_TOP_LINE     TYPE I.
+   DATA L_TC_NAME             LIKE FELD-NAME.
+   DATA L_TC_LINES_NAME       LIKE FELD-NAME.
+   DATA L_TC_FIELD_NAME       LIKE FELD-NAME.
+
+   FIELD-SYMBOLS <TC>         TYPE CXTAB_CONTROL.
+   FIELD-SYMBOLS <LINES>      TYPE I.
+*&SPWIZARD: END OF LOCAL DATA------------------------------------------*
+
+   ASSIGN (P_TC_NAME) TO <TC>.
+*&SPWIZARD: get looplines of TableControl                              *
+   CONCATENATE 'G_' P_TC_NAME '_LINES' INTO L_TC_LINES_NAME.
+   ASSIGN (L_TC_LINES_NAME) TO <LINES>.
+
+
+*&SPWIZARD: is no line filled?                                         *
+   IF <TC>-LINES = 0.
+*&SPWIZARD: yes, ...                                                   *
+     L_TC_NEW_TOP_LINE = 1.
+   ELSE.
+*&SPWIZARD: no, ...                                                    *
+     CALL FUNCTION 'SCROLLING_IN_TABLE'
+          EXPORTING
+               ENTRY_ACT             = <TC>-TOP_LINE
+               ENTRY_FROM            = 1
+               ENTRY_TO              = <TC>-LINES
+               LAST_PAGE_FULL        = 'X'
+               LOOPS                 = <LINES>
+               OK_CODE               = P_OK
+               OVERLAPPING           = 'X'
+          IMPORTING
+               ENTRY_NEW             = L_TC_NEW_TOP_LINE
+          EXCEPTIONS
+*              NO_ENTRY_OR_PAGE_ACT  = 01
+*              NO_ENTRY_TO           = 02
+*              NO_OK_CODE_OR_PAGE_GO = 03
+               OTHERS                = 0.
+   ENDIF.
+
+*&SPWIZARD: get actual tc and column                                   *
+   GET CURSOR FIELD L_TC_FIELD_NAME
+              AREA  L_TC_NAME.
+
+   IF SYST-SUBRC = 0.
+     IF L_TC_NAME = P_TC_NAME.
+*&SPWIZARD: et actual column                                           *
+       SET CURSOR FIELD L_TC_FIELD_NAME LINE 1.
+     ENDIF.
+   ENDIF.
+
+*&SPWIZARD: set the new top line                                       *
+   <TC>-TOP_LINE = L_TC_NEW_TOP_LINE.
+
+
+ ENDFORM.                              " COMPUTE_SCROLLING_IN_TC
+
+*&---------------------------------------------------------------------*
+*&      Form  FCODE_TC_MARK_LINES
+*&---------------------------------------------------------------------*
+*       marks all TableControl lines
+*----------------------------------------------------------------------*
+*      -->P_TC_NAME  name of tablecontrol
+*----------------------------------------------------------------------*
+FORM FCODE_TC_MARK_LINES USING P_TC_NAME
+                               P_TABLE_NAME
+                               P_MARK_NAME.
+*&SPWIZARD: EGIN OF LOCAL DATA-----------------------------------------*
+  DATA L_TABLE_NAME       LIKE FELD-NAME.
+
+  FIELD-SYMBOLS <TC>         TYPE CXTAB_CONTROL.
+  FIELD-SYMBOLS <TABLE>      TYPE STANDARD TABLE.
+  FIELD-SYMBOLS <WA>.
+  FIELD-SYMBOLS <MARK_FIELD>.
+*&SPWIZARD: END OF LOCAL DATA------------------------------------------*
+
+  ASSIGN (P_TC_NAME) TO <TC>.
+
+*&SPWIZARD: get the table, which belongs to the tc                     *
+   CONCATENATE P_TABLE_NAME '[]' INTO L_TABLE_NAME. "table body
+   ASSIGN (L_TABLE_NAME) TO <TABLE>.                "not headerline
+
+*&SPWIZARD: mark all filled lines                                      *
+  LOOP AT <TABLE> ASSIGNING <WA>.
+
+*&SPWIZARD: access to the component 'FLAG' of the table header         *
+     ASSIGN COMPONENT P_MARK_NAME OF STRUCTURE <WA> TO <MARK_FIELD>.
+
+     <MARK_FIELD> = 'X'.
+  ENDLOOP.
+ENDFORM.                                          "fcode_tc_mark_lines
+
+*&---------------------------------------------------------------------*
+*&      Form  FCODE_TC_DEMARK_LINES
+*&---------------------------------------------------------------------*
+*       demarks all TableControl lines
+*----------------------------------------------------------------------*
+*      -->P_TC_NAME  name of tablecontrol
+*----------------------------------------------------------------------*
+FORM FCODE_TC_DEMARK_LINES USING P_TC_NAME
+                                 P_TABLE_NAME
+                                 P_MARK_NAME .
+*&SPWIZARD: BEGIN OF LOCAL DATA----------------------------------------*
+  DATA L_TABLE_NAME       LIKE FELD-NAME.
+
+  FIELD-SYMBOLS <TC>         TYPE CXTAB_CONTROL.
+  FIELD-SYMBOLS <TABLE>      TYPE STANDARD TABLE.
+  FIELD-SYMBOLS <WA>.
+  FIELD-SYMBOLS <MARK_FIELD>.
+*&SPWIZARD: END OF LOCAL DATA------------------------------------------*
+
+  ASSIGN (P_TC_NAME) TO <TC>.
+
+*&SPWIZARD: get the table, which belongs to the tc                     *
+   CONCATENATE P_TABLE_NAME '[]' INTO L_TABLE_NAME. "table body
+   ASSIGN (L_TABLE_NAME) TO <TABLE>.                "not headerline
+
+*&SPWIZARD: demark all filled lines                                    *
+  LOOP AT <TABLE> ASSIGNING <WA>.
+
+*&SPWIZARD: access to the component 'FLAG' of the table header         *
+     ASSIGN COMPONENT P_MARK_NAME OF STRUCTURE <WA> TO <MARK_FIELD>.
+
+     <MARK_FIELD> = SPACE.
+  ENDLOOP.
+ENDFORM.                                          "fcode_tc_mark_lines
+*&---------------------------------------------------------------------*
+*&      Form  GET_INVOICE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM GET_INVOICE .
+
+IF YRRE_D_POR_ROOT-CONTRACTNO IS NOT INITIAL AND G_INVOICE_SEL_COPIED IS INITIAL.
+
+  SELECT * FROM YRRE_D_POR_ROOT INTO CORRESPONDING FIELDS OF TABLE G_INVOICE_SEL_ITAB
+    WHERE CONTRACTNO = YRRE_D_POR_ROOT-CONTRACTNO
+          AND DOCTYPE = '02'
+          AND GJAHR = YRRE_D_POR_ROOT-GJAHR
+          AND APPSTATUS = '40'
+          AND STATUS = '05'
+          AND DELETE = ' '
+          AND PAYSTATUS <> '02' .
+
+    IF SY-SUBRC = 0.
+      SORT G_INVOICE_SEL_ITAB ASCENDING BY BELNR.
+      G_INVOICE_SEL_COPIED = 'X'.
+    ENDIF.
+
+    LOOP AT G_INVOICE_SEL_ITAB INTO G_INVOICE_SEL_WA.
+
+      CALL FUNCTION 'BAPI_CURRENCY_CONV_TO_EXTERNAL'
+      EXPORTING
+        CURRENCY        = G_INVOICE_SEL_WA-WAERS
+        AMOUNT_INTERNAL = G_INVOICE_SEL_WA-VAT_AMT
+      IMPORTING
+        AMOUNT_EXTERNAL = LV_AMT.
+
+      G_INVOICE_SEL_WA-VAT_AMT = LV_AMT.
+
+      G_INVOICE_SEL_WA-TAXAMT = G_INVOICE_SEL_WA-VAT_AMT.
+
+      CALL FUNCTION 'BAPI_CURRENCY_CONV_TO_EXTERNAL'
+      EXPORTING
+        CURRENCY        = G_INVOICE_SEL_WA-WAERS
+        AMOUNT_INTERNAL = G_INVOICE_SEL_WA-BILLAMT_TAX
+      IMPORTING
+        AMOUNT_EXTERNAL = LV_AMT.
+
+      G_INVOICE_SEL_WA-BILLAMT_TAX = LV_AMT.
+
+* Get available amount
+
+      IF G_INVOICE_SEL_WA-AVA_SUM IS INITIAL.
+
+      CLEAR: MAX_NUM2, LT_PRIVNC.
+
+      SELECT * FROM YRRE_CCM_PRIVNC INTO CORRESPONDING FIELDS OF TABLE LT_PRIVNC
+      WHERE CONTRACTNO = YRRE_D_POR_ROOT-CONTRACTNO
+       AND  INV_FI      = G_INVOICE_SEL_WA-BELNR.
+
+     IF SY-SUBRC = 0.
+
+      SORT LT_PRIVNC BY PR_FI DESCENDING.
+
+      READ TABLE LT_PRIVNC INTO LS_PRIVNC WITH KEY INV_FI = G_INVOICE_SEL_WA-BELNR .
+
+        MAX_NUM2 = LS_PRIVNC-PR_FI.
+
+     ENDIF.
+
+      SELECT SINGLE  BILLAMT_AV FROM YRRE_CCM_PRIVNC INTO AVA_SUM
+      WHERE CONTRACTNO = YRRE_D_POR_ROOT-CONTRACTNO
+      AND   INV_FI = G_INVOICE_SEL_WA-BELNR
+      AND   PR_FI = MAX_NUM2.
+
+       IF SY-SUBRC = 0.
+
+       CALL FUNCTION 'BAPI_CURRENCY_CONV_TO_EXTERNAL'
+      EXPORTING
+        CURRENCY        = G_INVOICE_SEL_WA-WAERS
+        AMOUNT_INTERNAL = AVA_SUM
+      IMPORTING
+        AMOUNT_EXTERNAL = LV_AMT.
+
+      G_INVOICE_SEL_WA-AVA_SUM = LV_AMT.
+
+        ELSE.
+
+        G_INVOICE_SEL_WA-AVA_SUM = G_INVOICE_SEL_WA-BILLAMT_TAX .
+
+       ENDIF.
+
+       MODIFY G_INVOICE_SEL_ITAB FROM G_INVOICE_SEL_WA.
+
+      ENDIF.
+
+    ENDLOOP.
+
+ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  POST_PR
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM POST_PR.
+
+ DATA: LW_WRBTR   TYPE P,
+       LW_WRBTR_C TYPE CHAR25.
+
+DATA:  LT_UPDATE TYPE STANDARD TABLE OF YRRE_CCM_PRIVNC,
+       LS_UPDATE TYPE YRRE_CCM_PRIVNC.
+
+DATA: FLAG.
+
+* Covert amount with relevant currency
+ IF YRRE_D_POR_ROOT-WAERS = 'VND'.
+
+   YRRE_D_POR_ROOT-CURR_REQ = YRRE_D_POR_ROOT-CURR_REQ * 100.
+
+ ENDIF.
+
+LOOP AT G_INVOICE_SEL_ITAB INTO G_INVOICE_SEL_WA WHERE CHECK = 'X' AND BELNR2 IS INITIAL.
+
+* Get line item number
+
+      DATA BUZEI TYPE BUZEI.
+      SELECT MIN( BUZEI ) INTO BUZEI
+       FROM BSEG
+      WHERE BELNR = G_INVOICE_SEL_WA-BELNR
+        AND GJAHR = YRRE_D_POR_ROOT-GJAHR
+        AND BUKRS = YRRE_D_POR_ROOT-BUKRS
+        AND KOART = 'K'.
+
+
+* Check total payment input
+
+      DATA TOTAL_INPUT TYPE YRRE_CURR_FKREQ_LC.
+
+      TOTAL_INPUT = TOTAL_INPUT + G_INVOICE_SEL_WA-CURR_FKREQ_LC.
+
+      IF TOTAL_INPUT > YRRE_D_POR_ROOT-CURR_REQ.
+
+        G_INVOICE_SEL_WA-MSSG = TEXT-001.
+
+        G_INVOICE_SEL_WA-STATS = ICON_FAILURE.
+
+        MODIFY G_INVOICE_SEL_ITAB FROM G_INVOICE_SEL_WA.
+
+        CLEAR: G_INVOICE_SEL_WA.
+
+        CONTINUE.
+
+      ENDIF.
+
+
+* Check amount rules
+
+    IF G_INVOICE_SEL_WA-CURR_FKREQ_LC IS NOT INITIAL.
+
+      IF G_INVOICE_SEL_WA-AVA_SUM < G_INVOICE_SEL_WA-CURR_FKREQ_LC.
+
+        MESSAGE E643(YRRE_FI).
+
+        ELSEIF G_INVOICE_SEL_WA-CURR_FKREQ_LC > YRRE_D_POR_ROOT-CURR_REQ.
+
+        MESSAGE E644(YRRE_FI).
+
+       ELSEIF G_INVOICE_SEL_WA-CURR_FKREQ_LC < 0.
+
+         MESSAGE E639(YRRE_FI).
+
+      ENDIF.
+
+      ELSE.
+
+        MESSAGE E626(YRRE_FI).
+
+    ENDIF.
+
+* Validate amount entered
+
+IF G_INVOICE_SEL_WA-WAERS = 'VND'.
+    LW_WRBTR = G_INVOICE_SEL_WA-CURR_FKREQ_LC.
+    LW_WRBTR_C = LW_WRBTR.
+  ELSE.
+    LW_WRBTR_C = G_INVOICE_SEL_WA-CURR_FKREQ_LC.
+*    REPLACE '.' WITH ','  INTO LW_WRBTR_C. " removed by Tienlv1 on 2/8/2019
+  ENDIF.
+
+  WHILE  LW_WRBTR_C+0(1) = '0'
+      OR LW_WRBTR_C+0(1) = ' '.
+    SHIFT LW_WRBTR_C LEFT BY 1 PLACES.
+  ENDWHILE.
+
+* Covert format date
+
+  PERFORM COVERT_DATE.
+
+* Get logic for BDC
+
+  CLEAR FLAG.
+
+  READ TABLE LT_PRIVNC INTO LS_PRIVNC WITH KEY INV_FI = G_INVOICE_SEL_WA-BELNR .
+
+  IF SY-SUBRC = 0.
+    FLAG = 'X'.
+  ENDIF.
+
+* Running Create payment request
+
+   CLEAR: MESSTAB, MESSWA.
+
+  PERFORM BDC_DYNPRO USING  'SAPMF05A' '0132'.
+
+  PERFORM BDC_FIELD  USING
+                     : 'BDC_CURSOR' 'RF05A-BUZEI',
+                     : 'BDC_OKCODE' '/00',
+                     : 'RF05A-BELNR' G_INVOICE_SEL_WA-BELNR,
+                     : 'RF05A-BUKRS' YRRE_D_POR_ROOT-BUKRS,
+                     : 'RF05A-GJAHR' YRRE_D_POR_ROOT-GJAHR,
+                     : 'RF05A-BUZEI' BUZEI.
+IF FLAG IS NOT INITIAL.
+
+  PERFORM BDC_DYNPRO USING  'SAPMF05A' '0615'.
+
+    PERFORM BDC_FIELD  USING
+                      : 'BDC_CURSOR' 'RF05A-PSBET',
+                      : 'BDC_OKCODE' '=GO'.
+*                      : 'BDC_OKCODE' '/00'.
+
+ENDIF.
+
+
+
+    PERFORM BDC_DYNPRO USING  'SAPMF05A' '0133'.
+
+    PERFORM BDC_FIELD  USING
+                     :'BDC_CURSOR' 'BKPF-BKTXT',
+                     :'BDC_OKCODE' '/00',
+*                     :'BKPF-BLDAT' LW_BLDAT,
+                     :'BKPF-BLART' 'YM',
+                     :'BKPF-BUDAT' LV_BEGDA,
+                     :'BKPF-MONAT' YRRE_CCM_PRIVNC-BUDAT+4(2).
+*                     :'BKPF-BKTXT' YRRE_D_POR_ROOT-PURID.
+
+  PERFORM BDC_DYNPRO USING  'SAPMF05A' '0306'.
+
+  PERFORM BDC_FIELD  USING
+                     :'BDC_CURSOR' 'BSEG-WRBTR',
+                     :'BDC_OKCODE' '=ZK',
+                     :'BSEG-WRBTR' LW_WRBTR_C,
+                     :'BSEG-KIDNO' YRRE_D_POR_ROOT-PURID,
+                     : 'BSEG-ZLSCH' YRRE_CCM_PRIVNC-ZLSCH,
+                     :'BSEG-ZUONR' YRRE_D_POR_ROOT-CONTRACTNO.
+  PERFORM BDC_DYNPRO USING  'SAPMF05A' '0336'.
+
+  PERFORM BDC_FIELD  USING
+                     :'BDC_CURSOR' 'BSEG-HKTID',
+                     :'BDC_OKCODE' '=BU',
+                     :'BSEG-HBKID' YRRE_CCM_PRIVNC-HBKID,
+                     :'BSEG-HKTID' YRRE_CCM_PRIVNC-HKTID,
+                     :'BSEG-BVTYP' YRRE_CCM_PRIVNC-BVTYP,
+                     :'BSEG-XREF1' YRRE_CCM_PRIVNC-XREF1,
+                     :'BSEG-XREF2' YRRE_CCM_PRIVNC-XREF2,
+                     :'BSEG-HZUON' 'CCM-PR'.
+
+
+  CALL TRANSACTION 'F-59'
+         USING BDCDATA
+         MODE   'N'
+         UPDATE 'L'
+         MESSAGES INTO MESSTAB.
+
+ " Get Message
+  READ TABLE MESSTAB INTO MESSWA
+       WITH KEY MSGTYP = 'S'
+                MSGID = 'F5'
+                MSGNR = '312'.
+    IF SY-SUBRC = 0.
+
+      G_INVOICE_SEL_WA-MSSG  = TEXT-002.
+      G_INVOICE_SEL_WA-STATS =  ICON_CHECKED.
+      G_INVOICE_SEL_WA-BELNR2 = MESSWA-MSGV1.
+
+********************************Update database table**************************************
+
+
+      CLEAR: LT_UPDATE, LS_UPDATE.
+
+      LS_UPDATE-PURID           = YRRE_D_POR_ROOT-PURID.
+      LS_UPDATE-CONTRACTNO      = YRRE_D_POR_ROOT-CONTRACTNO.
+      LS_UPDATE-OPVID           = YRRE_D_POR_ROOT-OPVID.
+      LS_UPDATE-PR_FI           = G_INVOICE_SEL_WA-BELNR2.
+      LS_UPDATE-BUDAT           = YRRE_CCM_PRIVNC-BUDAT.
+      LS_UPDATE-BILLNO          = G_INVOICE_SEL_WA-BILLNO.
+      LS_UPDATE-INV_FI          = G_INVOICE_SEL_WA-BELNR.
+      LS_UPDATE-CURR_ACT_TAX    = YRRE_D_POR_ROOT-CURR_ACT_TAX.
+
+      IF G_INVOICE_SEL_WA-WAERS = 'VND'.
+
+      LS_UPDATE-CURR_REQ_AV     = ( YRRE_D_POR_ROOT-CURR_REQ - TOTAL_INPUT ) / 100 .
+      LS_UPDATE-BILLAMT_TAX     = G_INVOICE_SEL_WA-BILLAMT_TAX / 100.
+      LS_UPDATE-TAXAMT          = G_INVOICE_SEL_WA-TAXAMT / 100.
+      LS_UPDATE-BILLAMT_AV      = ( G_INVOICE_SEL_WA-AVA_SUM - TOTAL_INPUT ) / 100.
+
+      ELSE.
+
+      LS_UPDATE-CURR_REQ_AV     = YRRE_D_POR_ROOT-CURR_REQ - TOTAL_INPUT .
+      LS_UPDATE-BILLAMT_TAX     = G_INVOICE_SEL_WA-BILLAMT_TAX .
+      LS_UPDATE-TAXAMT          = G_INVOICE_SEL_WA-TAXAMT .
+      LS_UPDATE-BILLAMT_AV      = G_INVOICE_SEL_WA-AVA_SUM - TOTAL_INPUT .
+
+      ENDIF.
+
+      LS_UPDATE-HBKID           = YRRE_CCM_PRIVNC-HBKID.
+      LS_UPDATE-HKTID           = YRRE_CCM_PRIVNC-HKTID.
+      LS_UPDATE-BVTYP           = YRRE_CCM_PRIVNC-BVTYP.
+      LS_UPDATE-XREF1           = YRRE_CCM_PRIVNC-XREF1.
+      LS_UPDATE-XREF2           = YRRE_CCM_PRIVNC-XREF2.
+      LS_UPDATE-PAY_TYPE        = YRRE_D_POR_ROOT-PAY_TYPE.
+      LS_UPDATE-ZLSCH           = YRRE_CCM_PRIVNC-ZLSCH.
+      LS_UPDATE-PYCUR           = G_INVOICE_SEL_WA-WAERS.
+      LS_UPDATE-BUKRS           = YRRE_D_POR_ROOT-BUKRS.
+      LS_UPDATE-PSPID           = YRRE_D_POR_ROOT-PSPID.
+      LS_UPDATE-PROJ_PH         = YRRE_D_POR_ROOT-PROJ_PH.
+      LS_UPDATE-LCHG_UNAME      = SY-UNAME.
+      LS_UPDATE-CREA_TIME       = SY-UZEIT.
+      LS_UPDATE-CREA_DATE       = SY-DATUM.
+
+      APPEND LS_UPDATE TO LT_UPDATE.
+
+      INSERT YRRE_CCM_PRIVNC FROM TABLE LT_UPDATE.
+
+      DATA PAYSTS TYPE YRRE_OPV_PAYSTA.
+
+      IF LS_UPDATE-BILLAMT_AV = 0.
+
+        PAYSTS = '02'.
+
+      ELSE.
+
+        PAYSTS = '03'.
+
+      ENDIF.
+
+       UPDATE YRRE_D_POR_ROOT SET PAYSTATUS = PAYSTS
+                              WHERE   BELNR = G_INVOICE_SEL_WA-BELNR
+                              AND     GJAHR = YRRE_D_POR_ROOT-GJAHR
+                              AND     BUKRS = YRRE_D_POR_ROOT-BUKRS.
+
+      IF LS_UPDATE-CURR_REQ_AV < LS_UPDATE-CURR_ACT_TAX.
+
+        UPDATE YRRE_D_POR_ROOT SET    STATUS = '05'
+                                      BELNR = G_INVOICE_SEL_WA-BELNR2
+                              WHERE   PURID = YRRE_D_POR_ROOT-PURID
+                              AND     CONTRACTNO = YRRE_D_POR_ROOT-CONTRACTNO
+                              AND     BUKRS = YRRE_D_POR_ROOT-BUKRS.
+
+      ENDIF.
+
+
+       REFRESH: LT_UPDATE, MESSTAB.
+
+
+**********************************************************************
+      ELSE.
+
+      G_INVOICE_SEL_WA-STATS =  ICON_INCOMPLETE .
+
+      TOTAL_INPUT = TOTAL_INPUT - G_INVOICE_SEL_WA-CURR_FKREQ_LC.
+
+
+       LOOP AT MESSTAB INTO MESSWA.
+
+      CALL FUNCTION 'FORMAT_MESSAGE'
+        EXPORTING
+          ID        = MESSWA-MSGID
+          LANG      = SY-LANGU
+          NO        = MESSWA-MSGNR
+          V1        = MESSWA-MSGV1
+          V2        = MESSWA-MSGV2
+          V3        = MESSWA-MSGV3
+          V4        = MESSWA-MSGV4
+        IMPORTING
+          MSG       = G_INVOICE_SEL_WA-MSSG
+        EXCEPTIONS
+          NOT_FOUND = 1
+          OTHERS    = 2.
+
+
+
+    ENDLOOP.
+
+      ENDIF.
+
+   REFRESH BDCDATA.
+
+   MODIFY G_INVOICE_SEL_ITAB FROM G_INVOICE_SEL_WA.
+
+   CLEAR: G_INVOICE_SEL_WA.
+
+ENDLOOP.
+
+ENDFORM.
+
+
+*----------------------------------------------------------------------*
+*        Start new screen                                              *
+*----------------------------------------------------------------------*
+FORM BDC_DYNPRO USING PROGRAM DYNPRO.
+  CLEAR BDCDATA.
+  BDCDATA-PROGRAM  = PROGRAM.
+  BDCDATA-DYNPRO   = DYNPRO.
+  BDCDATA-DYNBEGIN = 'X'.
+  APPEND BDCDATA.
+ENDFORM.
+*----------------------------------------------------------------------*
+*        Insert field                                                  *
+*----------------------------------------------------------------------*
+FORM BDC_FIELD USING FNAM FVAL.
+*  IF FVAL <> NODATA.
+    CLEAR BDCDATA.
+    BDCDATA-FNAM = FNAM.
+    BDCDATA-FVAL = FVAL.
+    APPEND BDCDATA.
+*  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  COVERT_DATE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM COVERT_DATE .
+   LV_DATE = YRRE_CCM_PRIVNC-BUDAT+6(2).
+   LV_MONTH = YRRE_CCM_PRIVNC-BUDAT+4(2).
+   LV_YEAR = YRRE_CCM_PRIVNC-BUDAT(4).
+
+CONCATENATE LV_DATE LV_MONTH LV_YEAR INTO LV_BEGDA SEPARATED BY '.'.
+ENDFORM.
+                     " FCODE_DELETE_RO
+*&---------------------------------------------------------------------*
+*&      Module  ZF4_BVTYP  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE ZF4_BVTYP INPUT.
+
+   DATA:  BVTYP     LIKE LFBK-BVTYP,
+          LIFNR     LIKE LFBK-LIFNR.
+
+  LIFNR = YRRE_D_POR_ROOT-LIFNR.
+
+ IF YRRE_CCM_PRIVNC-BVTYP IS INITIAL.
+
+  CALL FUNCTION 'FI_F4_BVTYP'
+    EXPORTING
+      I_LIFNR = LIFNR
+      I_XSHOW = ''
+    IMPORTING
+      E_BVTYP = BVTYP.
+
+    IF NOT BVTYP IS INITIAL.
+    YRRE_CCM_PRIVNC-BVTYP = BVTYP.
+     ENDIF.
+
+ ENDIF.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Form  GET_FI
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM GET_FI .
+
+IF YRRE_D_POR_ROOT-CONTRACTNO IS NOT INITIAL AND G_INVOICE_SEL_COPIED IS INITIAL.
+
+  SELECT BELNR PSWSL AS WAERS FROM BSEG INTO CORRESPONDING FIELDS OF TABLE G_INVOICE_SEL_ITAB
+    WHERE ZUONR = YRRE_D_POR_ROOT-CONTRACTNO
+    AND  BUKRS = YRRE_D_POR_ROOT-BUKRS
+    AND  GJAHR = YRRE_D_POR_ROOT-GJAHR.
+
+   SORT G_INVOICE_SEL_ITAB ASCENDING BY BELNR.
+
+   DELETE ADJACENT DUPLICATES FROM G_INVOICE_SEL_ITAB COMPARING BELNR.
+
+ IF SY-SUBRC = 0.
+
+  LOOP AT G_INVOICE_SEL_ITAB INTO G_INVOICE_SEL_WA.
+
+    SELECT SINGLE DMBTR FROM BSEG INTO G_INVOICE_SEL_WA-BILLAMT_TAX
+      WHERE BELNR = G_INVOICE_SEL_WA-BELNR
+      AND   BUKRS = YRRE_D_POR_ROOT-BUKRS
+      AND   GJAHR = YRRE_D_POR_ROOT-GJAHR
+      AND   SHKZG = 'H'.
+
+     SELECT SINGLE DMBTR FROM BSEG INTO G_INVOICE_SEL_WA-TAXAMT
+      WHERE BELNR = G_INVOICE_SEL_WA-BELNR
+      AND   BUKRS = YRRE_D_POR_ROOT-BUKRS
+      AND   GJAHR = YRRE_D_POR_ROOT-GJAHR
+      AND   SHKZG = 'S'
+      AND   MWART <> ' '.
+
+
+      CALL FUNCTION 'BAPI_CURRENCY_CONV_TO_EXTERNAL'
+      EXPORTING
+        CURRENCY        = G_INVOICE_SEL_WA-WAERS
+        AMOUNT_INTERNAL = G_INVOICE_SEL_WA-TAXAMT
+      IMPORTING
+        AMOUNT_EXTERNAL = LV_AMT.
+
+    G_INVOICE_SEL_WA-TAXAMT = LV_AMT.
+
+      CALL FUNCTION 'BAPI_CURRENCY_CONV_TO_EXTERNAL'
+      EXPORTING
+        CURRENCY        = G_INVOICE_SEL_WA-WAERS
+        AMOUNT_INTERNAL = G_INVOICE_SEL_WA-BILLAMT_TAX
+      IMPORTING
+        AMOUNT_EXTERNAL = LV_AMT.
+
+      G_INVOICE_SEL_WA-BILLAMT_TAX = LV_AMT.
+
+   SELECT SINGLE BUDAT FROM BKPF INTO G_INVOICE_SEL_WA-INV_DATE
+     WHERE  BELNR = G_INVOICE_SEL_WA-BELNR
+      AND   BUKRS = YRRE_D_POR_ROOT-BUKRS
+      AND   GJAHR = YRRE_D_POR_ROOT-GJAHR
+      AND   STGRD = ' '
+      AND   BLART = 'KR'.
+
+  IF  SY-SUBRC <> 0.
+
+    DELETE TABLE G_INVOICE_SEL_ITAB FROM G_INVOICE_SEL_WA.
+
+   ELSE.
+
+      IF G_INVOICE_SEL_WA-AVA_SUM IS INITIAL.
+
+      CLEAR: MAX_NUM2, LT_PRIVNC.
+
+      SELECT * FROM YRRE_CCM_PRIVNC INTO CORRESPONDING FIELDS OF TABLE LT_PRIVNC
+      WHERE CONTRACTNO = YRRE_D_POR_ROOT-CONTRACTNO
+       AND  INV_FI      = G_INVOICE_SEL_WA-BELNR.
+
+     IF SY-SUBRC = 0.
+
+      SORT LT_PRIVNC BY PR_FI DESCENDING.
+
+      READ TABLE LT_PRIVNC INTO LS_PRIVNC WITH KEY INV_FI = G_INVOICE_SEL_WA-BELNR .
+
+        MAX_NUM2 = LS_PRIVNC-PR_FI.
+
+     ENDIF.
+
+      SELECT SINGLE  BILLAMT_AV FROM YRRE_CCM_PRIVNC INTO AVA_SUM
+      WHERE CONTRACTNO = YRRE_D_POR_ROOT-CONTRACTNO
+      AND   INV_FI = G_INVOICE_SEL_WA-BELNR
+      AND   PR_FI = MAX_NUM2.
+
+     IF SY-SUBRC = 0.
+
+     CALL FUNCTION 'BAPI_CURRENCY_CONV_TO_EXTERNAL'
+      EXPORTING
+        CURRENCY        = G_INVOICE_SEL_WA-WAERS
+        AMOUNT_INTERNAL = AVA_SUM
+      IMPORTING
+        AMOUNT_EXTERNAL = LV_AMT.
+
+      G_INVOICE_SEL_WA-AVA_SUM = LV_AMT.
+
+        ELSE.
+
+        G_INVOICE_SEL_WA-AVA_SUM = G_INVOICE_SEL_WA-BILLAMT_TAX .
+
+       ENDIF.
+
+     MODIFY G_INVOICE_SEL_ITAB FROM G_INVOICE_SEL_WA.
+
+  ENDIF.
+
+  ENDIF.
+
+  ENDLOOP.
+
+ G_INVOICE_SEL_COPIED = 'X'.
+
+ ENDIF.
+ENDIF.
+ENDFORM.
