@@ -1,0 +1,33 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZPROG_SPECIFIC_PARAMTER
+*&---------------------------------------------------------------------*
+TYPE-POOLS: icon, col.
+TABLES: bkpf.
+TYPES: BEGIN OF s_bseg.
+TYPES: checkbox.
+  INCLUDE TYPE bseg.
+TYPES:usage TYPE n,
+      icon TYPE icon-id,
+*      line_counter TYPE i,
+      it_colors TYPE lvc_t_scol,
+END OF s_bseg.
+
+DATA: g_itab_bkpf TYPE STANDARD TABLE OF bkpf,
+      g_itab_bseg TYPE STANDARD TABLE OF s_bseg.
+
+DATA gs_color TYPE lvc_s_scol.
+
+DATA: ok_code TYPE sy-ucomm.
+
+PARAMETERS: p_bukrs TYPE bukrs,
+            p_gjahr TYPE gjahr.
+SELECT-OPTIONS: p_belnr for bkpf-belnr.
+
+
+SELECTION-SCREEN SKIP 1.
+
+SELECTION-SCREEN BEGIN OF BLOCK alv WITH FRAME TITLE text-alv.
+  PARAMETERS: pa_full RADIOBUTTON GROUP alvd DEFAULT 'X',
+              pa_cont RADIOBUTTON GROUP alvd ,
+              pa_list RADIOBUTTON GROUP alvd.
+SELECTION-SCREEN END OF BLOCK alv.

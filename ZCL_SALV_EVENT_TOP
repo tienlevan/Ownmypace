@@ -1,0 +1,77 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZCL_SALV_EVENT_TOP
+*&---------------------------------------------------------------------*
+CLASS lcl_handler DEFINITION.
+
+  PUBLIC SECTION.
+
+
+  CLASS-METHODS:
+  on_add_function
+  FOR EVENT added_function
+  OF cl_salv_events_table
+  IMPORTING e_salv_function,
+
+  on_double_click
+  FOR EVENT double_click
+  OF cl_salv_events_table
+  IMPORTING
+    row,
+
+  on_link_click
+  FOR EVENT link_click
+  OF cl_salv_events_table
+  IMPORTING
+   row
+   column.
+
+
+  ENDCLASS.
+
+CLASS lcl_handler IMPLEMENTATION.
+
+  METHOD on_add_function.
+
+    DATA: ls_lvc_s_colo TYPE lvc_s_colo.
+    CASE e_salv_function.
+      WHEN 'MYREF'.
+        gv_columns = gv_alv_table->get_columns( ).
+* prepare color
+        ls_lvc_s_colo-col = col_positive.
+        ls_lvc_s_colo-int = 0.
+        ls_lvc_s_colo-inv = 0.
+* set colunm
+        gv_column ?= gv_columns->get_column( COLUMNNAME = 'DMBTR' ).
+        gv_column->set_color( VALUE = ls_lvc_s_colo ).
+
+    ENDCASE.
+
+  ENDMETHOD.
+
+  METHOD on_double_click.
+
+    READ TABLE g_itab_bseg ASSIGNING FIELD-SYMBOL(<wa_bseg>) INDEX row.
+    DATA(mess) = |Link Click { <wa_bseg>-belnr }|.
+    MESSAGE mess TYPE 'I'.
+
+  ENDMETHOD.
+
+  METHOD on_link_click.
+
+   CASE COLUMN.
+
+    WHEN 'CHECKBOX'.
+    DATA(gs_bseg) = g_itab_bseg[ row ].
+    IF sy-subrc = 0.
+      IF gs_bseg-checkbox = 'X'.
+        CLEAR gs_bseg-checkbox.
+      ELSE.
+        gs_bseg-checkbox = 'X'.
+      ENDIF.
+    MODIFY g_itab_bseg FROM gs_bseg INDEX row TRANSPORTING CHECKBOX.
+    gv_alv_table->refresh( ).
+    ENDIF.
+    ENDCASE.
+
+     ENDMETHOD.
+     ENDCLASS.

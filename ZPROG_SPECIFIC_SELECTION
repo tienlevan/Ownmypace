@@ -1,0 +1,87 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZPROG_SPECIFIC_SELECTION
+*&---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+Select * FROM bkpf INTO CORRESPONDING FIELDS OF TABLE g_itab_bkpf
+                   WHERE bukrs = p_bukrs
+                   AND   gjahr = p_gjahr
+                   AND   belnr in p_belnr
+                   AND   blart = 'KR'
+                   ORDER BY belnr.
+
+SELECT * FROM bseg INTO CORRESPONDING FIELDS OF TABLE g_itab_bseg
+                   FOR ALL ENTRIES IN g_itab_bkpf
+                   WHERE bukrs = g_itab_bkpf-bukrs
+                   AND   gjahr = g_itab_bkpf-gjahr
+                   AND   belnr = g_itab_bkpf-belnr.
+LOOP AT g_itab_bseg ASSIGNING FIELD-SYMBOL(<wa_bseg>).
+*usage exception light
+  IF <wa_bseg>-ZLSPR = 'B'.
+    <wa_bseg>-usage = 1.
+    ELSE.
+    <wa_bseg>-usage = 3.
+  ENDIF.
+*icon
+  IF <wa_bseg>-ZFBDT > '20190101'.
+    <wa_bseg>-icon = icon_positive.
+    ELSE.
+    <wa_bseg>-icon = icon_negative.
+    endif.
+* cell color
+    IF <wa_bseg>-KOART = 'K'.
+     CLEAR gs_color.
+     gs_color-fname = 'KOART'.
+     gs_color-color-col = col_negative.
+     gs_color-color-int = 1.
+     APPEND gs_color to <wa_bseg>-it_colors.
+    endif.
+* whole line color
+     IF <wa_bseg>-WRBTR > 10000.
+       CLEAR gs_color.
+       gs_color-color-col = col_positive.
+       gs_color-color-int = 1.
+       APPEND gs_color to <wa_bseg>-it_colors.
+     ENDIF.
+ENDLOOP.
+CASE 'X'.
+  WHEN pa_full or pa_list.
+* decide about list display
+
+    IF pa_list IS NOT INITIAL.
+      gv_list_display = if_salv_c_bool_sap=>true.
+      ELSE.
+      gv_list_display = if_salv_c_bool_sap=>false.
+     ENDIF.
+* create ALV instance
+     TRY .
+*       TRY.
+       CALL METHOD CL_SALV_TABLE=>FACTORY
+         EXPORTING
+           LIST_DISPLAY   = gv_list_display
+*           R_CONTAINER    =
+*           CONTAINER_NAME =
+         IMPORTING
+           R_SALV_TABLE   = gv_alv_table
+         CHANGING
+           T_TABLE        = g_itab_bseg
+           .
+        CATCH CX_SALV_MSG INTO gv_alv_error.
+        zcl_salv_error_handle=>process_alv_error( EXPORTING r_error = gv_alv_error ).
+       ENDTRY.
+* set customer defined status
+       gv_alv_table->set_screen_status(
+                  report = sy-cprog
+                  pfstatus = 'FULLSCREEN'
+                  ).
+* define setting
+      PERFORM define_settings USING gv_alv_table.
+* dispaly ALV
+       gv_alv_table->display( ).
+
+
+WHEN pa_cont.
+
+ CALL SCREEN 100.
+
+ENDCASE.

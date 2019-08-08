@@ -1,0 +1,38 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZCL_SALV_TABLE_TOP
+*&---------------------------------------------------------------------*
+DATA: gv_list_display TYPE sap_bool,
+      gv_alv_table TYPE REF TO cl_salv_table,
+      gv_alv_error TYPE REF TO cx_salv_error.
+
+DATA: gv_container TYPE REF TO cl_gui_custom_container. " Container if needed
+
+DATA: gv_columns TYPE REF TO cl_salv_columns_table, " reference to columns objects
+      gv_column  TYPE REF TO cl_salv_column_table,  " reference to one column objects
+      gv_col     TYPE REF TO cl_salv_column, " reference to one column attribute
+      gv_aggrs   TYPE REF TO cl_salv_aggregations, " reference to aggregations objects
+      gv_aggr    TYPE REF TO cl_salv_aggregation,  " reference to one aggregation objects
+      gv_funcs   TYPE REF TO cl_salv_functions_list, " reference to functions objects
+      gv_func_st TYPE REF TO cl_salv_functional_settings, " reference to hyperlink and tooltip
+      gv_display TYPE REF TO cl_salv_display_settings, " reference to display objects
+      gv_event   TYPE REF TO cl_salv_events_table, " reference to events objects
+      gv_layout  TYPE REF TO cl_salv_layout, " reference to layout objects
+      gs_layout  TYPE  salv_s_layout_info, " reference to saved layouts
+      gs_key     TYPE  salv_s_layout_key, " reference to layout key
+      gv_print   TYPE REF TO cl_salv_print, " reference to printer settings
+      gv_select  TYPE REF TO cl_salv_selections, " reference to selection mode and selections
+      gv_sort    TYPE REF TO cl_salv_sorts, " reference to sorting criteria
+      gv_filter  TYPE REF TO cl_salv_filters. " reference to filter criteria
+
+DATA: gv_title TYPE lvc_title.
+
+PARAMETERS: p_layout TYPE slis_vari.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_layout.
+  gs_key-report = sy-cprog.
+  gs_layout =
+    cl_salv_layout_service=>f4_layouts(
+       s_key = gs_key
+*       restrict = IF_SALV_C_LAYOUT=>RESTRICT_NONE
+          ).
+  p_layout = gs_layout-layout.

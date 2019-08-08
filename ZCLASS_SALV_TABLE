@@ -1,0 +1,22 @@
+*&---------------------------------------------------------------------*
+*& Report ZCLASS_SALV_TABLE
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZCLASS_SALV_TABLE.
+
+INCLUDE zprog_specific_paramter.
+
+INCLUDE zcl_salv_table_top.
+
+INCLUDE zcl_salv_event_top.
+
+INCLUDE zprog_specific_selection.
+
+INCLUDE zprog_define_settings.
+
+INCLUDE zclass_salv_table_status_01o01.
+
+INCLUDE zclass_salv_table_user_commi01.
+
+INCLUDE zclass_salv_table_control_oo01.

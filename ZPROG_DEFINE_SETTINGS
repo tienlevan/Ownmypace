@@ -1,0 +1,380 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZPROG_DEFINE_SETTINGS
+*&---------------------------------------------------------------------*
+
+FORM define_settings
+  USING po_alv_table TYPE REF TO cl_salv_table.
+
+PERFORM: set_display   USING po_alv_table,
+         set_columns   USING po_alv_table,
+         set_sorts     USING po_alv_table,
+         set_aggregs   USING po_alv_table,
+         set_selection        USING po_alv_table,
+         set_layout           USING po_alv_table,
+         set_functs           USING po_alv_table,
+         set_events           USING po_alv_table,
+         set_print            USING po_alv_table,
+         set_header_footer    USING po_alv_table.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SET_DISPLAY
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_PO_ALV_TABLE  text
+*----------------------------------------------------------------------*
+FORM SET_DISPLAY  USING    PO_ALV_TABLE TYPE REF TO cl_salv_table.
+
+DATA lv_title TYPE lvc_title.
+
+*get display setting object
+  gv_display = po_alv_table->get_display_settings( ).
+* set header
+  lv_title = |Sample { 'title' }|.
+  gv_display->set_list_header( VALUE = lv_title ).
+* set horizonal lines off
+  gv_display->set_horizontal_lines( VALUE = ' ' ).
+* set striped pattern
+  gv_display->set_striped_pattern( VALUE = 'X' ).
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  SET_COLUMNS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_PO_ALV_TABLE  text
+*----------------------------------------------------------------------*
+FORM SET_COLUMNS  USING   po_alv_table TYPE REF TO cl_salv_table.
+
+* Title text
+DATA: lv_scrtext_s TYPE scrtext_s,
+      lv_scrtext_m TYPE scrtext_m,
+      lv_scrtext_l TYPE scrtext_l.
+* tooltip
+DATA lv_lvc_tip TYPE lvc_tip.
+* column position
+DATA lv_pos TYPE i.
+* get columns object
+  gv_columns = po_alv_table->get_columns( ).
+* fix key fields fix
+  gv_columns->set_key_fixation( VALUE = 'X' ).
+* optimize columns width
+  gv_columns->set_optimize( VALUE = 'X' ).
+** bring column position
+*  gv_columns->set_column_position( columnname = ' ' position = 5 ) .
+* single coulmn setting
+  TRY .
+    gv_column ?= gv_columns->get_column( columnname = 'BELNR' ).
+
+* change column name
+  lv_scrtext_s = 'Doc no.'.
+  gv_column->set_short_text( value = lv_scrtext_s ).
+
+  lv_scrtext_m = 'Document No.'.
+  gv_column->set_medium_text( value = lv_scrtext_m ).
+
+  lv_scrtext_l = 'Document Number'.
+  gv_column->set_long_text( value = lv_scrtext_l ).
+
+  CATCH cx_salv_not_found INTO gv_alv_error.
+
+  ENDTRY.
+
+* set tooltip
+
+  lv_lvc_tip = 'tool tip'.
+  gv_column->set_tooltip( value = lv_lvc_tip ).
+
+
+* set visible colunm
+
+  TRY .
+    gv_column ?= gv_columns->get_column( columnname = 'MANDT' ).
+
+  CATCH cx_salv_not_found INTO gv_alv_error.
+
+  ENDTRY.
+
+  gv_column->set_technical( value = 'X' ). " delete from display
+
+*  gv_column->set_visible( VALUE = 'X' ). "X for display, '' for hide but can select in layout
+
+* set exception colunm
+
+gv_columns->set_exception_column(
+              VALUE = 'USAGE'
+*              GROUP = SPACE
+*              CONDENSE = ' '
+              ).
+** set count column
+*
+*gv_columns->set_count_column( VALUE = 'LINE_COUNTER' ) .
+
+* set all cell/line colors
+
+gv_columns->set_color_column( VALUE = 'IT_COLORS' ).
+
+* set color to COL_GROUP
+
+gs_color-color-col = col_group .
+gs_color-color-int = 1.
+gv_column->set_color( VALUE = gs_color-color ).
+
+* column icon
+
+gv_column ?= gv_columns->get_column( columnname = 'ICON' ).
+gv_column->set_icon( ).
+lv_scrtext_s = 'future'.
+gv_column->set_short_text( VALUE = lv_scrtext_s ).
+gv_column->set_output_length( 5 ).
+gv_column->set_row( VALUE = 2 ).
+
+* set currecy column
+
+ gv_column ?= gv_columns->get_column( columnname = 'DMBTR' ).
+ gv_column->set_currency( VALUE = 'HWAER' ). " local currency colunm
+
+* set cell type : checkbox, hotpost, dropdown, link.
+
+gv_column ?= gv_columns->get_column( columnname = 'CHECKBOX' ).
+gv_column->set_cell_type( VALUE = if_salv_c_cell_type=>checkbox_hotspot ).
+
+gv_column ?= gv_columns->get_column( columnname = 'BELNR' ).
+gv_column->set_cell_type( VALUE = if_salv_c_cell_type=>hotspot ).
+
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SET_SORTS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_PO_ALV_TABLE  text
+*----------------------------------------------------------------------*
+FORM SET_SORTS  USING  PO_ALV_TABLE TYPE REF TO cl_salv_table.
+
+*get the sort object
+gv_sort = po_alv_table->get_sorts( ).
+*add the sorts
+TRY.
+*gv_sort->add_sort(
+*          columnname = 'BELNR'
+*          position   = 1
+*          sequence   = 1
+*          subtotal   = ' '
+*          group      = 2
+*          obligatory = ' '
+*          ).
+
+gv_sort->add_sort(
+          columnname = 'BUKRS'
+          position   = 1
+*          sequence   = 2
+          subtotal   = 'X'
+          group      = 1  " 1-group with detail, 2-group only
+          obligatory = ' '
+          ).
+
+CATCH: CX_SALV_NOT_FOUND,
+       CX_SALV_DATA_ERROR,
+       CX_SALV_EXISTING INTO gv_alv_error.
+
+  zcl_salv_error_handle=>process_alv_error( EXPORTING r_error = gv_alv_error ).
+
+ENDTRY.
+*compress subtotal rows
+gv_sort->set_compressed_subtotal( VALUE = 'BUKRS' ).
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SET_AGGREGS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_PO_ALV_TABLE  text
+*----------------------------------------------------------------------*
+FORM SET_AGGREGS  USING po_alv_table TYPE REF TO cl_salv_table.
+
+  gv_aggrs = po_alv_table->get_aggregations( ).
+  TRY.
+  gv_aggrs->add_aggregation(
+           columnname   = 'WRBTR'
+           aggregation = if_salv_c_aggregation=>total
+           ).
+  CATCH cx_salv_not_found INTO gv_alv_error.
+  zcl_salv_error_handle=>process_alv_error( EXPORTING r_error = gv_alv_error ).
+  IF sy-subrc = 0.
+    LEAVE TO SCREEN 0.
+  ENDIF.
+
+  ENDTRY.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SET_SELECTION
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_PO_ALV_TABLE  text
+*----------------------------------------------------------------------*
+FORM SET_SELECTION  USING po_alv_table TYPE REF TO cl_salv_table.
+
+  gv_select = po_alv_table->get_selections( ).
+*set selection mode
+  gv_select->set_selection_mode( VALUE = if_salv_c_selection_mode=>cell ).
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SET_LAYOUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_PO_ALV_TABLE  text
+*----------------------------------------------------------------------*
+FORM SET_LAYOUT  USING po_alv_table TYPE REF TO cl_salv_table.
+
+*get layout object
+gv_layout = po_alv_table->get_layout( ).
+*set layout key
+gs_key-report = sy-cprog.
+gv_layout->set_key( VALUE = gs_key ).
+*set save restriction
+gv_layout->set_save_restriction( VALUE = if_salv_c_layout=>restrict_none ).
+*allow default layout
+gv_layout->set_default( VALUE = 'X' ).
+*set initial layout
+gv_layout->set_initial_layout( VALUE = p_layout ).
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SET_FUNCTS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_PO_ALV_TABLE  text
+*----------------------------------------------------------------------*
+FORM SET_FUNCTS  USING PO_ALV_TABLE TYPE REF TO cl_salv_table.
+
+  gv_funcs = po_alv_table->get_functions( ).
+
+*offer all functions
+
+  gv_funcs->set_all( VALUE = if_salv_c_bool_sap=>true ).
+
+**hide some fuctions
+*
+*  gv_funcs->set_group_export( VALUE = if_salv_c_bool_sap=>false ).
+*customer defined fuctions
+IF pa_cont = 'X'.
+
+  gv_funcs->add_function(
+             name     = 'MYREF'
+             icon     = 'icon_insert_row'
+             text     = 'MYREF'
+             tooltip  = 'tooltip'
+             position = if_salv_c_function_position=>right_of_salv_functions
+              ).
+
+ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SET_EVENTS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_PO_ALV_TABLE  text
+*----------------------------------------------------------------------*
+FORM SET_EVENTS  USING PO_ALV_TABLE TYPE REF TO cl_salv_table.
+
+ gv_event = po_alv_table->get_event( ).
+ SET HANDLER:
+  lcl_handler=>on_add_function FOR gv_event,
+  lcl_handler=>on_double_click FOR gv_event,
+  lcl_handler=>on_link_click FOR gv_event.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SET_PRINT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_PO_ALV_TABLE  text
+*----------------------------------------------------------------------*
+FORM SET_PRINT  USING PO_ALV_TABLE TYPE REF TO cl_salv_table.
+
+gv_print = po_alv_table->get_print( ).
+
+*set selection info on
+
+gv_print->set_selectioninfo_on( callback_program = sy-cprog ).
+
+*set listinfo on (sort, filter..)
+
+gv_print->set_listinfo_on( VALUE = 'X' ).
+
+*set list info on a separated coverpage
+
+gv_print->set_coverpage_on( VALUE = 'X' ).
+gv_print->set_report_standard_header_on( VALUE = 'X' ).
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SET_HEADER
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_PO_ALV_TABLE  text
+*----------------------------------------------------------------------*
+FORM SET_HEADER_FOOTER  USING  PO_ALV_TABLE TYPE REF TO cl_salv_table.
+
+  DATA: lo_layout_grid_header TYPE REF TO cl_salv_form_layout_grid,
+        lo_layout_grid_footer TYPE REF TO cl_salv_form_layout_grid.
+
+* create grid object
+
+  CREATE OBJECT lo_layout_grid_header.
+
+* add some text items
+
+  lo_layout_grid_header->create_header_information(
+                      row    = 1
+                      column = 1
+                      text   = 'Document list'
+                       ).
+  lo_layout_grid_header->create_text(
+                      row    = 2
+                      column = 1
+                      text   = |Report date: { sy-datum+6(2) } / { sy-datum+4(2) } / { sy-datum(4) }|
+                      ).
+
+   DESCRIBE TABLE g_itab_bseg LINES DATA(lines).
+
+    lo_layout_grid_header->create_text(
+                      row    = 3
+                      column = 1
+                      text   = |Number of entries: { lines }|
+                      ).
+
+* declare grid as header of list
+
+  po_alv_table->set_top_of_list( VALUE = lo_layout_grid_header ). "print without header
+
+* create text for footer
+
+  CREATE OBJECT lo_layout_grid_footer.
+
+  lo_layout_grid_footer->create_text(
+                      row    = 1
+                      column = 1
+                      text   = |If any bugs, feel free to contact us!|
+                      ).
+
+   po_alv_table->set_end_of_list( VALUE = lo_layout_grid_footer ). "print with footer set_end_of_list_print
+
+
+ENDFORM.
