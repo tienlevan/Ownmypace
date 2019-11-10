@@ -1,0 +1,49 @@
+interface ZIF_ALV_REPORT_FEEDER
+  public .
+
+
+  types:
+    BEGIN OF ty_selection_param,
+           attribute_name TYPE string,
+           sign TYPE ddsign,
+           option TYPE ddoption,
+           low TYPE string,
+           high TYPE string,
+         END OF ty_selection_param .
+  types:
+    ty_selection_param_tab TYPE STANDARD TABLE OF ty_selection_param .
+
+  methods INITIALIZE
+    importing
+      !IV_REPORT_PROGRAM type CSEQUENCE .
+  methods GET_DEFINITION
+    exporting
+      !EO_FIELD_CATALOG type ref to CL_ABAP_TABLEDESCR .
+  methods SET_ALV_TABLE_REF
+    importing
+      !IO_TABLE type ref to CL_SALV_TABLE .
+  methods GET_DATA
+    importing
+      !IT_SELECTION_PARAMS type TY_SELECTION_PARAM_TAB
+    changing
+      !CT_DATA type DATA .
+  methods PROCESS_BEFORE_OUTPUT
+    importing
+      !IO_SORTS type ref to CL_SALV_SORTS
+      !IO_SELECTIONS type ref to CL_SALV_SELECTIONS
+      !IO_AGGREGATIONS type ref to CL_SALV_AGGREGATIONS
+      !IO_FILTERS type ref to CL_SALV_FILTERS
+      !IO_COLUMNS type ref to CL_SALV_COLUMNS_TABLE
+      !IO_LAYOUT type ref to CL_SALV_LAYOUT
+      !IO_DISPLAY_SETTINGS type ref to CL_SALV_DISPLAY_SETTINGS
+      !IO_FUNCTIONAL_SETTINGS type ref to CL_SALV_FUNCTIONAL_SETTINGS
+      !IO_FUNCTIONS type ref to CL_SALV_FUNCTIONS_LIST
+      !IO_PRINT type ref to CL_SALV_PRINT
+      !IO_TOP_OF_LIST type ref to CL_SALV_FORM_ELEMENT
+      !IO_TOP_OF_LIST_PRINT type ref to CL_SALV_FORM_ELEMENT
+      !IO_END_OF_LIST type ref to CL_SALV_FORM_ELEMENT
+      !IO_END_OF_LIST_PRINT type ref to CL_SALV_FORM_ELEMENT .
+  methods PROCESS_EVENT
+    importing
+      !IO_EVENT type ref to ZCL_ALV_TABLE_EVENT .
+endinterface.

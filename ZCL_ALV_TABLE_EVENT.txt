@@ -1,0 +1,55 @@
+class ZCL_ALV_TABLE_EVENT definition
+  public
+  create public .
+
+public section.
+
+  constants:
+    BEGIN OF CO_EVENT_TYPE,
+               before_salv_function TYPE string VALUE 'BEFORE_SALV_FUNCTION',
+               after_salv_function TYPE string VALUE 'AFTER_SALV_FUNCTION',
+               added_function TYPE string VALUE 'ADDED_FUNCTION',
+               top_of_page TYPE string VALUE 'TOP_OF_PAGE',
+               end_of_page TYPE string VALUE 'END_OF_PAGE',
+               double_click TYPE string VALUE 'DOUBLE_CLICK',
+               link_click TYPE string VALUE 'LINK_CLICK',
+             END OF CO_EVENT_TYPE .
+  data MV_EVENT_ID type STRING read-only .
+
+  methods CONSTRUCTOR
+    importing
+      !IV_EVENT_ID type STRING .
+  methods GET_EVENT_PARAMETERS
+    returning
+      value(RO_PARAMETER) type ref to ZCL_ALV_RPT_PARAMETERS .
+protected section.
+private section.
+
+  data MO_EVENT_PARAMETERS type ref to ZCL_ALV_RPT_PARAMETERS .
+ENDCLASS.
+
+
+
+CLASS ZCL_ALV_TABLE_EVENT IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_TABLE_EVENT->CONSTRUCTOR
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_EVENT_ID                    TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method CONSTRUCTOR.
+    me->mv_event_id = iv_event_id.
+    CREATE OBJECT me->mo_event_parameters.
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_TABLE_EVENT->GET_EVENT_PARAMETERS
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] RO_PARAMETER                   TYPE REF TO ZCL_ALV_RPT_PARAMETERS
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method GET_EVENT_PARAMETERS.
+    ro_parameter = me->mo_event_parameters.
+  endmethod.
+ENDCLASS.

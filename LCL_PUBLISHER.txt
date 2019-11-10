@@ -1,0 +1,28 @@
+CLASS lcl_publisher DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+      add_message IMPORTING iv_message TYPE string,
+      confirm_receipt IMPORTING iv_subscriber TYPE string.
+
+    EVENTS:
+      message_added
+        EXPORTING VALUE(ev_message) TYPE string.
+ENDCLASS.
+
+CLASS lcl_publisher IMPLEMENTATION.
+  METHOD add_message.
+    DATA lv_message TYPE string.
+    lv_message = |Publishing message: [{ iv_message }].|.
+    WRITE: / lv_message.
+
+    RAISE EVENT message_added
+      EXPORTING
+        ev_message = iv_message.
+  ENDMETHOD.
+
+  METHOD confirm_receipt.
+    DATA lv_message TYPE string.
+    lv_message = |Message processed by { iv_subscriber }.|.
+    WRITE: / lv_message.
+  ENDMETHOD.
+ENDCLASS.

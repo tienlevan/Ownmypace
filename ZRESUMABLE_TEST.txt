@@ -1,0 +1,99 @@
+*&---------------------------------------------------------------------*
+*& Report ZRESUMABLE_TEST
+*&---------------------------------------------------------------------*
+REPORT zresumable_test.
+
+CLASS lcx_doc_service_error DEFINITION
+  INHERITING FROM cx_static_check.
+ENDCLASS.
+
+CLASS lcl_persistence_service DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+      insert_document IMPORTING iv_file_name TYPE string
+                                iv_mime_type TYPE string
+                                iv_payload TYPE xstring
+                        RAISING RESUMABLE(cx_sy_sql_error).
+      ...
+ENDCLASS.
+
+CLASS lcl_persistence_service IMPLEMENTATION.
+  METHOD insert_document.
+    IF cl_db_sys=>is_in_memory_db EQ abap_true.
+      "Call stored procedure to insert the document using AMDP...
+    ELSE.
+      RAISE RESUMABLE EXCEPTION TYPE cx_sy_sql_error
+        EXPORTING
+          sqlcode = 900
+          sqlmsg = `SAP HANA is not available. ` &&
+                   `Will process through OpenSQL instead.`.
+    ENDIF.
+
+    "Insert the document using OpenSQL instead...
+    ...
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS lcl_document_service DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+      constructor,
+
+      upload_document IMPORTING iv_file_name TYPE string
+                                iv_mime_type TYPE string
+                                iv_payload TYPE xstring
+                        RAISING lcx_doc_service_error.
+
+  PRIVATE SECTION.
+    DATA mv_session_id TYPE guid_16.
+    DATA mo_persistence TYPE REF To lcl_persistence_service.
+
+    METHODS:
+      log IMPORTING iv_message TYPE csequence.
+ENDCLASS.
+
+CLASS lcl_document_service IMPLEMENTATION.
+  METHOD constructor.
+    TRY.
+      me->mv_session_id = cl_system_uuid=>create_uuid_x16_static( ).
+
+      me->mo_persistence = NEW lcl_persistence_service( ).
+    CATCH cx_uuid_error.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD upload_document.
+    DATA lx_sql_error TYPE REF TO cx_sy_sql_error.
+
+    TRY.
+      mo_persistence->insert_document( iv_file_name = iv_file_name
+                                       iv_mime_type = iv_mime_type
+                                       iv_payload = iv_payload ).
+
+      log( |File "{ iv_file_name }" was uploaded successfully.| ).
+    CATCH BEFORE UNWIND cx_sy_sql_error INTO lx_sql_error.
+      "Test the nature of the exception to determine
+      "if we should resume or abort:
+      IF lx_sql_error->sqlcode EQ 900.
+        log( lx_sql_error->sqlmsg ).
+        RESUME.
+      ELSE.
+        RAISE EXCEPTION TYPE lcx_doc_service_error
+          EXPORTING
+            previous = lx_sql_error.
+      ENDIF.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD log.
+    WRITE: / iv_message.
+  ENDMETHOD.
+ENDCLASS.
+
+START-OF-SELECTION.
+DATA(lo_doc_service) = NEW lcl_document_service( ).
+lo_doc_service->upload_document(
+  EXPORTING
+    iv_file_name = 'Test.txt'
+    iv_mime_type = 'text/plain'
+    iv_payload = CONV xstring( `This is a test.` ) ).

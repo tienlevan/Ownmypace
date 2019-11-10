@@ -1,0 +1,14 @@
+interface ZIF_COMPARABLE
+  public .
+
+
+  constants CO_EQUAL_TO type I value 0. "#EC NOTEXT
+  constants CO_LESS_THAN type I value -1. "#EC NOTEXT
+  constants CO_GREATER_THAN type I value 1. "#EC NOTEXT
+
+  methods COMPARE_TO
+    importing
+      !IO_OBJECT type ref to OBJECT
+    returning
+      value(RV_RESULT) type I .
+endinterface.

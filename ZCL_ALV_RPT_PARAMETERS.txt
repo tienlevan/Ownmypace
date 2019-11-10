@@ -1,0 +1,96 @@
+class ZCL_ALV_RPT_PARAMETERS definition
+  public
+  create public .
+
+public section.
+
+  methods CONSTRUCTOR .
+  methods GET_VALUE
+    importing
+      !IV_KEY type STRING
+    exporting
+      !EV_VALUE type ANY
+      !ER_VALUE type ref to DATA .
+  methods SET_VALUE
+    importing
+      !IV_KEY type STRING
+      !IV_VALUE type ANY optional
+      !IR_VALUE type ref to DATA optional .
+  methods DELETE_VALUE
+    importing
+      !IV_KEY type STRING .
+  methods GET_KEYS
+    returning
+      value(RT_KEYS) type IF_FPM_PARAMETER=>T_KEYS .
+protected section.
+private section.
+
+  data MO_DELEGATE type ref to CL_FPM_PARAMETER.
+ENDCLASS.
+
+
+
+CLASS ZCL_ALV_RPT_PARAMETERS IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_RPT_PARAMETERS->CONSTRUCTOR
+* +-------------------------------------------------------------------------------------------------+
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method CONSTRUCTOR.
+    CREATE OBJECT me->mo_delegate.
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_RPT_PARAMETERS->DELETE_VALUE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_KEY                         TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method DELETE_VALUE.
+    mo_delegate->if_fpm_parameter~delete_value( iv_key ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_RPT_PARAMETERS->GET_KEYS
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] RT_KEYS                        TYPE        IF_FPM_PARAMETER=>T_KEYS
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method GET_KEYS.
+    rt_keys = mo_delegate->if_fpm_parameter~get_keys( ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_RPT_PARAMETERS->GET_VALUE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_KEY                         TYPE        STRING
+* | [<---] EV_VALUE                       TYPE        ANY
+* | [<---] ER_VALUE                       TYPE REF TO DATA
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method GET_VALUE.
+    mo_delegate->if_fpm_parameter~get_value(
+      EXPORTING
+        iv_key = iv_key
+      IMPORTING
+        ev_value = ev_value
+        er_value = er_value ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_RPT_PARAMETERS->SET_VALUE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_KEY                         TYPE        STRING
+* | [--->] IV_VALUE                       TYPE        ANY(optional)
+* | [--->] IR_VALUE                       TYPE REF TO DATA(optional)
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method SET_VALUE.
+    mo_delegate->if_fpm_parameter~set_value(
+      EXPORTING
+        iv_key = iv_key
+        iv_value = iv_value
+        ir_value = ir_value ).
+  endmethod.
+ENDCLASS.

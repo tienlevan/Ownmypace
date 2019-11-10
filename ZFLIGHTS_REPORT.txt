@@ -1,0 +1,57 @@
+*&---------------------------------------------------------------------*
+*& Program Name: ZFLIGHTS_REPORT                                       *
+*& Created By:   James Wood (jwood@bowdark.com)                        *
+*& Created On:   6/11/2015                                             *
+*& Description:  A simple report program which demonstrates the use of *
+*&               the ALV report framework developed in Chapter 12 of   *
+*&               Object-Oriented Programming with ABAP Objects, 2nd    *
+*&               Edition.                                              *
+*&---------------------------------------------------------------------*
+REPORT zflights_report.
+
+*&---------------------------------------------------------------------*
+*& Selection Screen Definition                                         *
+*&---------------------------------------------------------------------*
+TABLES: sflight.
+
+SELECT-OPTIONS:
+  s_carrid FOR sflight-carrid,
+  s_connid FOR sflight-connid,
+  s_fldate FOR sflight-fldate.
+
+*&---------------------------------------------------------------------*
+*& Global Data Declarations                                            *
+*&---------------------------------------------------------------------*
+DATA gt_params TYPE zif_alv_report_feeder=>ty_selection_param_tab.
+
+*&---------------------------------------------------------------------*
+*& INITIALIZATION Event Block                                          *
+*&---------------------------------------------------------------------*
+INITIALIZATION.
+  "For demo purposes only...
+  %_s_carrid_%_app_%-text = 'Carrier ID'.
+  %_s_connid_%_app_%-text = 'Connection No'.
+  %_s_fldate_%_app_%-text = 'Flight Date'.
+
+*&---------------------------------------------------------------------*
+*& AT SELECTION-SCREEN Event Block                                     *
+*&---------------------------------------------------------------------*
+AT SELECTION-SCREEN.
+  "Dynamically collect selection screen parameter values into a table
+  "that can be passed into the framework:
+  zcl_alv_report_controller=>get_params_from_selscreen(
+    EXPORTING
+      iv_program_name = sy-repid
+      iv_screen_number = sy-dynnr
+    IMPORTING
+      et_parameters = gt_params ).
+
+*&---------------------------------------------------------------------*
+*& START-OF-SELECTION Event Block                                      *
+*&---------------------------------------------------------------------*
+START-OF-SELECTION.
+  "Launch the report using the framework controller class:
+  zcl_alv_report_controller=>launch_report(
+    EXPORTING
+      iv_feeder_class = 'ZCL_FLIGHT_FEEDER'
+      it_selection_params = gt_params ).

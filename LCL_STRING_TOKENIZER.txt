@@ -1,0 +1,39 @@
+CLASS lcl_string_tokenizer DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+      constructor IMPORTING iv_string TYPE csequence
+                            iv_delimiter TYPE csequence,
+
+      has_more_tokens RETURNING VALUE(rv_result) TYPE abap_bool,
+
+      next_token RETURNING VALUE(rv_token) TYPE string.
+
+  PRIVATE SECTION.
+    DATA mt_tokens TYPE string_table.
+    DATA mv_index TYPE i.
+ENDCLASS.
+
+CLASS lcl_string_tokenizer IMPLEMENTATION.
+  METHOD constructor.
+    SPLIT iv_string AT iv_delimiter INTO TABLE me->mt_tokens.
+
+    IF lines( me->mt_tokens ) GT 0.
+      me->mv_index = 1.
+    ELSE.
+      me->mv_index = 0.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD has_more_tokens.
+    IF me->mv_index LE lines( me->mt_tokens ).
+      rv_result = abap_true.
+    ELSE.
+      rv_result = abap_false.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD next_token.
+    READ TABLE me->mt_tokens INDEX me->mv_index INTO rv_token.
+    ADD 1 TO me->mv_index.
+  ENDMETHOD.
+ENDCLASS.

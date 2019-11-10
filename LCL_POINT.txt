@@ -1,0 +1,45 @@
+CLASS lcl_point DEFINITION.
+  PUBLIC SECTION.
+    CONSTANTS CO_PI TYPE f VALUE '3.14159265'.
+
+    CLASS-METHODS:
+      create_from_polar IMPORTING iv_r TYPE f
+                                  iv_theta TYPE p
+                        RETURNING VALUE(ro_point) 
+                             TYPE REF TO lcl_point.
+
+
+    DATA: mv_x TYPE p DECIMALS 2   "X-Coordinate
+          mv_y TYPE p DECIMALS 2.  "Y-Coordinate
+
+    METHODS get_distance IMPORTING io_point2
+                              TYPE REF TO lcl_point
+                         RETURNING VALUE(rv_distance) TYPE f.
+ENDCLASS.
+
+CLASS lcl_point IMPLEMENTATION.
+  METHOD create_from_polar.
+    "Convert the angle measure to radians:
+    DATA lv_theta_rad TYPE f.
+    lv_theta_rad = ( iv_theta * CO_PI ) / 180.
+
+    "Create a new point object and calculate the 
+    "X & Y coordinates:
+    CREATE OBJECT ro_point.
+
+    ro_point->mv_x = iv_r * cos( lv_theta_rad ).
+    ro_point->mv_y = iv_r * sin( lv_theta_rad ).
+  ENDMETHOD.
+
+  METHOD get_distance.
+    DATA: lv_dx TYPE f,         "Diff. X
+          lv_dy TYPE f.         "Diff. Y
+
+    "Calculate the Euclidean distance between the points:
+    lv_dx = io_point2->mv_x – me->mv_x.
+    lv_dy = io_point2->mv_y – me->mv_y.
+
+    rv_distance = 
+       sqrt( ( lv_dx * lv_dx ) + ( lv_dy * lv_dy ) ).
+  ENDMETHOD.
+ENDCLASS.

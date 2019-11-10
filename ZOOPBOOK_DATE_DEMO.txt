@@ -1,0 +1,152 @@
+*&---------------------------------------------------------------------*
+*& Program Name: ZOOPBOOK_DATE_DEMO                                    *
+*& Created By:   James Wood (jwood@bowdark.com)                        *
+*& Purpose:      This simple report program demonstrates how to use    *
+*&               ABAP Objects classes in normal ABAP programming       *
+*&               contexts.                                             *
+*&---------------------------------------------------------------------*
+REPORT zoopbook_date_demo.
+
+CLASS lcl_date DEFINITION.
+  PUBLIC SECTION.
+    CLASS-METHODS:
+      main.
+
+    METHODS:
+      constructor IMPORTING iv_date TYPE datum,
+      get_day_of_week RETURNING VALUE(rv_weekday) TYPE string,
+      as_native_date RETURNING VALUE(rv_date) TYPE d,
+      set_month IMPORTING iv_month TYPE numc2,
+      set_day IMPORTING iv_day TYPE numc2,
+      set_year IMPORTING iv_year TYPE numc4,
+      get_short_format RETURNING VALUE(rv_date) TYPE string,
+      get_long_format RETURNING VALUE(rv_date) TYPE string,
+      get_month_name RETURNING VALUE(rv_name) TYPE string.
+
+  PRIVATE SECTION.
+    TYPES: BEGIN OF ty_date,
+             month TYPE numc2,
+             day TYPE numc2,
+             year TYPE numc4,
+           END OF ty_date.
+
+    DATA mv_month TYPE numc2.
+    DATA mv_day TYPE numc2.
+    DATA mv_year TYPE numc4.
+ENDCLASS.
+
+CLASS lcl_date IMPLEMENTATION.
+  METHOD main.
+    DATA lo_birth_date TYPE REF TO lcl_date.
+    DATA lv_message TYPE string.
+
+    CREATE OBJECT lo_birth_date
+      EXPORTING
+        iv_date = '20030113'.
+
+    lv_message = |Andersen was born on a { lo_birth_date->get_day_of_week( ) }.|.
+    WRITE: / lv_message.
+
+    lv_message = |Official birth date: { lo_birth_date->get_long_format( ) }.|.
+    WRITE: / lv_message.
+  ENDMETHOD.
+
+  METHOD constructor.
+    set_month( iv_date+4(2) ).
+    set_day( iv_date+6(2) ).
+    set_year( iv_date+0(4) ).
+  ENDMETHOD.
+
+  METHOD as_native_date.
+    rv_date = mv_year && mv_month && mv_day.
+  ENDMETHOD.
+
+  METHOD get_day_of_week.
+    DATA lv_date TYPE d.
+    DATA lv_day  TYPE n.
+    DATA lt_days TYPE STANDARD TABLE OF t246.
+    FIELD-SYMBOLS <ls_day_name> LIKE LINE OF lt_days.
+
+    "Use the functionality of the ABAP native date type 'D'
+    "to determine the weekday as an integer value:
+    lv_date = as_native_date( ).
+    lv_day = lv_date MOD 7.
+    IF lv_day GT 1.
+      lv_day = lv_day - 1.
+    ELSE.
+      lv_day = lv_day + 6.
+    ENDIF.
+
+    "Use the standard function module DAY_NAMES_GET to determine
+    "the weekday name:
+    CALL FUNCTION 'DAY_NAMES_GET'
+    EXPORTING
+      LANGUAGE            = sy-langu
+    TABLES
+      day_names           = lt_days
+    EXCEPTIONS
+      day_names_not_found = 1
+      OTHERS              = 2.
+
+    READ TABLE lt_days ASSIGNING <ls_day_name>
+    WITH KEY wotnr = lv_day.
+    IF sy-subrc EQ 0.
+      rv_weekday = <ls_day_name>-langt.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD get_long_format.
+    rv_date =
+      |{ get_day_of_week( ) }, { get_month_name( ) } { me->mv_day }, { me->mv_year }|.
+  ENDMETHOD.
+
+  METHOD get_month_name.
+    DATA lt_months TYPE STANDARD TABLE OF t247.
+    FIELD-SYMBOLS <ls_month> LIKE LINE OF lt_months.
+
+    "Fetch the month names using the SAP standard function
+    "MONTH_NAMES_GET:
+    CALL FUNCTION 'MONTH_NAMES_GET'
+      EXPORTING
+        language              = sy-langu
+      TABLES
+        month_names           = lt_months
+      EXCEPTIONS
+        month_names_not_found = 1
+        others                = 2.
+
+    READ TABLE lt_months ASSIGNING <ls_month>
+    WITH KEY mnr = me->mv_month.
+    IF sy-subrc EQ 0.
+      rv_name = <ls_month>-ltx.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD get_short_format.
+    DATA lv_date TYPE datum.
+    lv_date = as_native_date( ).
+
+    rv_date = |{ lv_date DATE = ENVIRONMENT }|.
+  ENDMETHOD.
+
+  METHOD set_day.
+    me->mv_day = iv_day.
+    IF strlen( me->mv_day ) EQ 1.
+      me->mv_day = '0' && me->mv_day.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD set_month.
+    me->mv_month = iv_month.
+    IF strlen( me->mv_month ) EQ 1.
+      me->mv_month = '0' && me->mv_month.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD set_year.
+    me->mv_year = iv_year.
+  ENDMETHOD.
+ENDCLASS.
+
+START-OF-SELECTION.
+  lcl_date=>main( ).

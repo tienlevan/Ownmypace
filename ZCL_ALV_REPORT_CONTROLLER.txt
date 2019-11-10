@@ -1,0 +1,539 @@
+class ZCL_ALV_REPORT_CONTROLLER definition
+  public
+  create private .
+
+public section.
+
+  interface ZIF_ALV_REPORT_FEEDER load .
+  class-methods LAUNCH_REPORT
+    importing
+      !IV_FEEDER_CLASS type SEOCLSNAME
+      !IT_SELECTION_PARAMS type ZIF_ALV_REPORT_FEEDER=>TY_SELECTION_PARAM_TAB optional
+    raising
+      CX_SY_CREATE_OBJECT_ERROR
+      CX_SALV_MSG .
+  methods ON_TOP_OF_PAGE
+  final
+    for event TOP_OF_PAGE of CL_SALV_EVENTS_TABLE
+    importing
+      !R_TOP_OF_PAGE
+      !PAGE
+      !TABLE_INDEX .
+  methods ON_END_OF_PAGE
+  final
+    for event END_OF_PAGE of CL_SALV_EVENTS_TABLE
+    importing
+      !R_END_OF_PAGE
+      !PAGE .
+  methods ON_BEFORE_SALV_FUNCTION
+  final
+    for event BEFORE_SALV_FUNCTION of CL_SALV_EVENTS_TABLE
+    importing
+      !E_SALV_FUNCTION .
+  methods ON_AFTER_SALV_FUNCTION
+  final
+    for event AFTER_SALV_FUNCTION of CL_SALV_EVENTS_TABLE
+    importing
+      !E_SALV_FUNCTION .
+  methods ON_ADDED_FUNCTION
+  final
+    for event ADDED_FUNCTION of CL_SALV_EVENTS_TABLE
+    importing
+      !E_SALV_FUNCTION .
+  methods ON_DOUBLE_CLICK
+  final
+    for event DOUBLE_CLICK of CL_SALV_EVENTS_TABLE
+    importing
+      !ROW
+      !COLUMN .
+  methods ON_LINK_CLICK
+  final
+    for event LINK_CLICK of CL_SALV_EVENTS_TABLE
+    importing
+      !ROW
+      !COLUMN .
+  class-methods GET_PARAMS_FROM_SELSCREEN
+    importing
+      !IV_PROGRAM_NAME type SY-REPID default SY-REPID
+      !IV_SCREEN_NUMBER type SY-DYNNR default SY-DYNNR
+    exporting
+      !ET_PARAMETERS type ZIF_ALV_REPORT_FEEDER=>TY_SELECTION_PARAM_TAB .
+protected section.
+private section.
+
+  data MV_FEEDER_CLASS type SEOCLSNAME .
+  data MO_FEEDER type ref to ZIF_ALV_REPORT_FEEDER .
+  data MO_ALV_TABLE type ref to CL_SALV_TABLE .
+  data MR_T_DATA type ref to DATA .
+  data MO_TABLE_DESCR type ref to CL_ABAP_TABLEDESCR .
+
+  methods EXECUTE
+    importing
+      !IT_SELECTION_PARAMS type ZIF_ALV_REPORT_FEEDER=>TY_SELECTION_PARAM_TAB
+    raising
+      CX_SY_CREATE_OBJECT_ERROR
+      CX_SALV_MSG .
+  methods CONSTRUCTOR
+    importing
+      !IV_FEEDER_CLASS type SEOCLSNAME .
+  methods REGISTER_EVENT_HANDLERS .
+  methods SET_OUTPUT_PROPERTIES .
+ENDCLASS.
+
+
+
+CLASS ZCL_ALV_REPORT_CONTROLLER IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Private Method ZCL_ALV_REPORT_CONTROLLER->CONSTRUCTOR
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_FEEDER_CLASS                TYPE        SEOCLSNAME
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method CONSTRUCTOR.
+    me->mv_feeder_class = iv_feeder_class.
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Private Method ZCL_ALV_REPORT_CONTROLLER->EXECUTE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IT_SELECTION_PARAMS            TYPE        ZIF_ALV_REPORT_FEEDER=>TY_SELECTION_PARAM_TAB
+* | [!CX!] CX_SY_CREATE_OBJECT_ERROR
+* | [!CX!] CX_SALV_MSG
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method EXECUTE.
+    "Method-Local Data Declarations:
+    FIELD-SYMBOLS <lt_data> TYPE INDEX TABLE.
+
+    "Create and initialize the feeder class:
+    CREATE OBJECT me->mo_feeder TYPE (me->mv_feeder_class).
+    me->mo_feeder->initialize( sy-cprog ).
+
+    "Build the report data table:
+    me->mo_feeder->get_definition(
+      IMPORTING
+        eo_field_catalog = me->mo_table_descr ).
+
+    IF me->mo_table_descr IS NOT BOUND.
+      RAISE EXCEPTION TYPE cx_sy_create_object_error.
+    ENDIF.
+
+    CREATE DATA me->mr_t_data
+      TYPE HANDLE me->mo_table_descr.
+
+    IF me->mr_t_data IS NOT BOUND.
+      RAISE EXCEPTION TYPE cx_sy_create_object_error.
+    ENDIF.
+
+    "Fetch the report data from the feeder class:
+    ASSIGN me->mr_t_data->* TO <lt_data>.
+
+    me->mo_feeder->get_data(
+      EXPORTING
+        it_selection_params = it_selection_params
+      CHANGING
+        ct_data = <lt_data> ).
+
+    "Create the ALV table control:
+    cl_salv_table=>factory(
+      EXPORTING
+        list_display = if_salv_c_bool_sap=>false
+      IMPORTING
+        r_salv_table = me->mo_alv_table
+      CHANGING
+        t_table = <lt_data> ).
+
+    me->mo_feeder->set_alv_table_ref( me->mo_alv_table ).
+
+    "Let the feeder class initialize the table:
+    set_output_properties( ).
+
+    "Register this controller as a listener for events:
+    register_event_handlers( ).
+
+    "Now display the ALV table:
+    me->mo_alv_table->display( ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_ALV_REPORT_CONTROLLER=>GET_PARAMS_FROM_SELSCREEN
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_PROGRAM_NAME                TYPE        SY-REPID (default =SY-REPID)
+* | [--->] IV_SCREEN_NUMBER               TYPE        SY-DYNNR (default =SY-DYNNR)
+* | [<---] ET_PARAMETERS                  TYPE        ZIF_ALV_REPORT_FEEDER=>TY_SELECTION_PARAM_TAB
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method GET_PARAMS_FROM_SELSCREEN.
+    "Method-Local Data Declarations:
+    DATA lt_dynpro_fields TYPE STANDARD TABLE OF dynpread.
+    FIELD-SYMBOLS <ls_dynpro_field> LIKE LINE OF lt_dynpro_fields.
+    DATA lo_matcher TYPE REF TO cl_abap_matcher.
+    DATA lt_matches TYPE match_result_tab.
+    FIELD-SYMBOLS <ls_match> LIKE LINE OF lt_matches.
+    FIELD-SYMBOLS <ls_submatch> TYPE submatch_result.
+    DATA lt_fields TYPE string_table.
+    FIELD-SYMBOLS <lv_field> LIKE LINE OF lt_fields.
+    DATA lv_field_name TYPE string.
+    FIELD-SYMBOLS <lv_parameter> TYPE any.
+    FIELD-SYMBOLS <lt_selopt> TYPE INDEX TABLE.
+    FIELD-SYMBOLS <ls_selopt> TYPE any.
+    FIELD-SYMBOLS <lv_temp> TYPE any.
+    FIELD-SYMBOLS <ls_parameter> LIKE LINE OF et_parameters.
+
+    "Initialization:
+    REFRESH et_parameters.
+
+    "Determine the names of the selection screen parameters
+    "provided on the screen:
+    CALL FUNCTION 'DYNP_VALUES_READ'
+      EXPORTING
+        dyname               = iv_program_name
+        dynumb               = iv_screen_number
+        translate_to_upper   = 'X'
+        request              = 'A'
+      TABLES
+        dynpfields           = lt_dynpro_fields
+      EXCEPTIONS
+        invalid_abapworkarea = 1
+        invalid_dynprofield  = 2
+        invalid_dynproname   = 3
+        invalid_dynpronummer = 4
+        invalid_request      = 5
+        no_fielddescription  = 6
+        invalid_parameter    = 7
+        undefind_error       = 8
+        double_conversion    = 9
+        stepl_not_found      = 10
+        others               = 11.
+
+    "Scan through the field list looking for field name entries:
+    LOOP AT lt_dynpro_fields ASSIGNING <ls_dynpro_field>.
+      "Use regular expressions to isolate the field names:
+      REFRESH lt_matches.
+      lo_matcher =
+        cl_abap_matcher=>create( pattern = `^%_(.+)_%_APP_%-TEXT$`
+                                    text = <ls_dynpro_field>-fieldname
+                             ignore_case = abap_true ).
+      lt_matches = lo_matcher->find_all( ).
+
+      READ TABLE lt_matches INDEX 1 ASSIGNING <ls_match>.
+      IF sy-subrc EQ 0.
+        READ TABLE <ls_match>-submatches INDEX 1 ASSIGNING <ls_submatch>.
+        IF sy-subrc EQ 0.
+          lv_field_name = <ls_dynpro_field>-fieldname+<ls_submatch>-offset(<ls_submatch>-length).
+          APPEND lv_field_name TO lt_fields.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+
+    "Now, process through each of the found selection parameters
+    "andy copy the values into the selection table:
+    LOOP AT lt_fields ASSIGNING <lv_field>.
+      lv_field_name = |{ <lv_field> }-LOW|.
+      READ TABLE lt_dynpro_fields TRANSPORTING NO FIELDS WITH KEY fieldname = lv_field_name.
+      IF sy-subrc EQ 0.
+        lv_field_name = |({ iv_program_name }){ <lv_field> }[]|.
+        ASSIGN (lv_field_name) TO <lt_selopt>.
+        IF <lt_selopt> IS ASSIGNED.
+          LOOP AT <lt_selopt> ASSIGNING <ls_selopt>.
+            APPEND INITIAL LINE TO et_parameters ASSIGNING <ls_parameter>.
+            <ls_parameter>-attribute_name = <lv_field>.
+
+            ASSIGN COMPONENT 'SIGN' OF STRUCTURE <ls_selopt> TO <lv_temp>.
+            IF sy-subrc EQ 0.
+              <ls_parameter>-sign = <lv_temp>.
+            ENDIF.
+
+            ASSIGN COMPONENT 'OPTION' OF STRUCTURE <ls_selopt> TO <lv_temp>.
+            IF sy-subrc EQ 0.
+              <ls_parameter>-option = <lv_temp>.
+            ENDIF.
+
+            ASSIGN COMPONENT 'LOW' OF STRUCTURE <ls_selopt> TO <lv_temp>.
+            IF sy-subrc EQ 0.
+              <ls_parameter>-low = <lv_temp>.
+            ENDIF.
+
+            ASSIGN COMPONENT 'HIGH' OF STRUCTURE <ls_selopt> TO <lv_temp>.
+            IF sy-subrc EQ 0.
+              <ls_parameter>-high = <lv_temp>.
+            ENDIF.
+          ENDLOOP.
+        ENDIF.
+      ELSE.
+        lv_field_name = |({ iv_program_name }){ <lv_field> }|.
+        ASSIGN (lv_field_name) TO <lv_parameter>.
+        IF <lv_parameter> IS ASSIGNED.
+          APPEND INITIAL LINE TO et_parameters ASSIGNING <ls_parameter>.
+          <ls_parameter>-attribute_name = <lv_field>.
+          <ls_parameter>-sign = 'I'.
+          <ls_parameter>-option = 'EQ'.
+          <ls_parameter>-low = <lv_parameter>.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_ALV_REPORT_CONTROLLER=>LAUNCH_REPORT
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_FEEDER_CLASS                TYPE        SEOCLSNAME
+* | [--->] IT_SELECTION_PARAMS            TYPE        ZIF_ALV_REPORT_FEEDER=>TY_SELECTION_PARAM_TAB(optional)
+* | [!CX!] CX_SY_CREATE_OBJECT_ERROR
+* | [!CX!] CX_SALV_MSG
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method LAUNCH_REPORT.
+    "Method-Local Data Declarations:
+    DATA lo_controller TYPE REF TO zcl_alv_report_controller.
+
+    "Create an instance of the report controller and
+    "execute the report:
+    CREATE OBJECT lo_controller
+      EXPORTING
+        iv_feeder_class = iv_feeder_class.
+
+    "Execute the report:
+    lo_controller->execute( it_selection_params ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_REPORT_CONTROLLER->ON_ADDED_FUNCTION
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] E_SALV_FUNCTION                LIKE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method ON_ADDED_FUNCTION.
+    DATA lo_event TYPE REF TO zcl_alv_table_event.
+
+    CREATE OBJECT lo_event
+      EXPORTING
+        iv_event_id = zcl_alv_table_event=>co_event_type-added_function.
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'E_SALV_FUNCTION'
+        iv_value = e_salv_function ).
+
+    me->mo_feeder->process_event( lo_event ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_REPORT_CONTROLLER->ON_AFTER_SALV_FUNCTION
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] E_SALV_FUNCTION                LIKE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method ON_AFTER_SALV_FUNCTION.
+    DATA lo_event TYPE REF TO zcl_alv_table_event.
+
+    CREATE OBJECT lo_event
+      EXPORTING
+        iv_event_id = zcl_alv_table_event=>co_event_type-after_salv_function.
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'E_SALV_FUNCTION'
+        iv_value = e_salv_function ).
+
+    me->mo_feeder->process_event( lo_event ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_REPORT_CONTROLLER->ON_BEFORE_SALV_FUNCTION
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] E_SALV_FUNCTION                LIKE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method ON_BEFORE_SALV_FUNCTION.
+    DATA lo_event TYPE REF TO zcl_alv_table_event.
+
+    CREATE OBJECT lo_event
+      EXPORTING
+        iv_event_id = zcl_alv_table_event=>co_event_type-before_salv_function.
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'E_SALV_FUNCTION'
+        iv_value = e_salv_function ).
+
+    me->mo_feeder->process_event( lo_event ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_REPORT_CONTROLLER->ON_DOUBLE_CLICK
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] ROW                            LIKE
+* | [--->] COLUMN                         LIKE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method ON_DOUBLE_CLICK.
+    DATA lo_event TYPE REF TO zcl_alv_table_event.
+
+    CREATE OBJECT lo_event
+      EXPORTING
+        iv_event_id = zcl_alv_table_event=>co_event_type-double_click.
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'ROW'
+        iv_value = row ).
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'COLUMN'
+        iv_value = column ).
+
+    me->mo_feeder->process_event( lo_event ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_REPORT_CONTROLLER->ON_END_OF_PAGE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] R_END_OF_PAGE                  LIKE
+* | [--->] PAGE                           LIKE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method ON_END_OF_PAGE.
+    DATA lo_event TYPE REF TO zcl_alv_table_event.
+
+    CREATE OBJECT lo_event
+      EXPORTING
+        iv_event_id = zcl_alv_table_event=>co_event_type-end_of_page.
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'R_END_OF_PAGE'
+        iv_value = r_end_of_page ).
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'PAGE'
+        iv_value = page ).
+
+    me->mo_feeder->process_event( lo_event ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_REPORT_CONTROLLER->ON_LINK_CLICK
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] ROW                            LIKE
+* | [--->] COLUMN                         LIKE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method ON_LINK_CLICK.
+    DATA lo_event TYPE REF TO zcl_alv_table_event.
+
+    CREATE OBJECT lo_event
+      EXPORTING
+        iv_event_id = zcl_alv_table_event=>co_event_type-link_click.
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'ROW'
+        iv_value = row ).
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'COLUMN'
+        iv_value = column ).
+
+    me->mo_feeder->process_event( lo_event ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_ALV_REPORT_CONTROLLER->ON_TOP_OF_PAGE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] R_TOP_OF_PAGE                  LIKE
+* | [--->] PAGE                           LIKE
+* | [--->] TABLE_INDEX                    LIKE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method ON_TOP_OF_PAGE.
+    DATA lo_event TYPE REF TO zcl_alv_table_event.
+
+    CREATE OBJECT lo_event
+      EXPORTING
+        iv_event_id = zcl_alv_table_event=>co_event_type-top_of_page.
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'R_TOP_OF_PAGE'
+        iv_value = r_top_of_page ).
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'PAGE'
+        iv_value = page ).
+
+    lo_event->get_event_parameters( )->set_value(
+      EXPORTING
+        iv_key = 'TABLE_INDEX'
+        iv_value = table_index ).
+
+    me->mo_feeder->process_event( lo_event ).
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Private Method ZCL_ALV_REPORT_CONTROLLER->REGISTER_EVENT_HANDLERS
+* +-------------------------------------------------------------------------------------------------+
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method REGISTER_EVENT_HANDLERS.
+    "Method-Local Data Declarations:
+    DATA lo_event_handle TYPE REF TO cl_salv_events_table.
+
+    "Register this controller as the event handler for the
+    "ALV table events:
+    lo_event_handle = me->mo_alv_table->get_event( ).
+
+    SET HANDLER me->on_added_function FOR lo_event_handle.
+    SET HANDLER me->on_after_salv_function FOR lo_event_handle.
+    SET HANDLER me->on_before_salv_function FOR lo_event_handle.
+    SET HANDLER me->on_double_click FOR lo_event_handle.
+    SET HANDLER me->on_end_of_page FOR lo_event_handle.
+    SET HANDLER me->on_link_click FOR lo_event_handle.
+    SET HANDLER me->on_top_of_page FOR lo_event_handle.
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Private Method ZCL_ALV_REPORT_CONTROLLER->SET_OUTPUT_PROPERTIES
+* +-------------------------------------------------------------------------------------------------+
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method SET_OUTPUT_PROPERTIES.
+    "Method-Local Data Declarations:
+    DATA lo_layout TYPE REF TO cl_salv_layout.
+    DATA ls_layout_key TYPE salv_s_layout_key.
+
+    "Activate the standard toolbar buttons by default:
+    me->mo_alv_table->get_functions( )->set_all( if_salv_c_bool_sap=>true ).
+
+    "Set default layout settings:
+    ls_layout_key-report = sy-cprog.
+    lo_layout = me->mo_alv_table->get_layout( ).
+    lo_layout->set_key( ls_layout_key ).
+    lo_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+    "Optimize column widths:
+    me->mo_alv_table->get_columns( )->set_optimize( abap_true ).
+
+    "Delegate the rest of the property selection to the feeder class impl.
+    me->mo_feeder->process_before_output(
+        io_sorts               = me->mo_alv_table->get_sorts( )
+        io_selections          = me->mo_alv_table->get_selections( )
+        io_aggregations        = me->mo_alv_table->get_aggregations( )
+        io_filters             = me->mo_alv_table->get_filters( )
+        io_columns             = me->mo_alv_table->get_columns( )
+        io_layout              = me->mo_alv_table->get_layout( )
+        io_display_settings    = me->mo_alv_table->get_display_settings( )
+        io_functional_settings = me->mo_alv_table->get_functional_settings( )
+        io_functions           = me->mo_alv_table->get_functions( )
+        io_print               = me->mo_alv_table->get_print( )
+        io_top_of_list         = me->mo_alv_table->get_top_of_list( )
+        io_top_of_list_print   = me->mo_alv_table->get_top_of_list_print( )
+        io_end_of_list         = me->mo_alv_table->get_end_of_list( )
+        io_end_of_list_print   = me->mo_alv_table->get_end_of_list_print( ) ).
+  endmethod.
+ENDCLASS.
